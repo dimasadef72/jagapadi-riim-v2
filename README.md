@@ -1,68 +1,45 @@
-# Jaga Padi Firebase Dashboard
+# Jaga Padi Dashboard
 
-Dashboard WebGIS Jaga Padi berbasis Next.js dan Firebase. Repo ini adalah versi bersih dari UI lama yang sebelumnya berada di monorepo, dengan target data utama dari Firestore dan Storage.
-
-## Tujuan Repo
-
-- Menjalankan dashboard Next.js sebagai repo tunggal.
-- Memakai UI dari repo lama tanpa membawa backend PostgreSQL/Drizzle.
-- Membaca data lahan, grid NDVI, titik inspeksi, sensor, dan hama dari Firebase.
-- Menyediakan fallback mock agar UI tetap bisa dibuka sebelum Firestore berisi data.
-
-## Stack
-
-- Next.js 16 App Router
-- React 19
-- TypeScript
-- Firebase Web SDK
-- Firestore
-- Firebase Storage
-- TanStack Query
-- Leaflet dan React Leaflet
-- Tailwind CSS v4
-- Bun
-
-## Struktur Penting
+WebGIS dashboard untuk monitoring lahan padi, visualisasi NDVI, titik inspeksi, sensor lingkungan, dan indikasi hama berbasis Firebase.
 
 ```txt
-app/
-  api/health/route.ts        Health check Firestore
-  maps/page.tsx              Halaman peta
-  fase-1/ndvi/page.tsx       Tabel NDVI fase 1
-  fase-2/ndvi/page.tsx       Tabel NDVI + sensor fase 2
-  fase-2/hama/page.tsx       Tabel hama
-
-components/
-  map-api.ts                 Adaptor data untuk UI lama
-  map-ui.tsx                 UI peta dan panel layer
-
-lib/
-  firebase.ts                Inisialisasi Firebase app/db/storage
-
-services/
-  lahan-service.ts           Query Firestore untuk domain lahan
-
-types/
-  lahan.ts                   Kontrak tipe data Firestore
-
-scripts/
-  seed-firebase-lahan.ts     Seed dummy Firestore
-  seed-lahan.ts              Referensi seed PostgreSQL lama, tidak dipakai
-
-docs/
-  kontrak_firebase_function_danan.md
-  panduan_migrasi_repo_firebase.md
+Next.js 16  |  React 19  |  Firebase  |  Firestore  |  Leaflet  |  TanStack Query
 ```
 
-## Setup
+## Overview
 
-Install dependency:
+Jaga Padi Dashboard menampilkan data pemantauan sawah dalam peta interaktif dan tabel operasional. Aplikasi membaca data dari Firestore, menampilkan overlay peta, grid NDVI, data sensor fase 2, dan temuan hama.
+
+Fokus utama aplikasi:
+
+- Peta interaktif untuk memilih lahan dan layer analisis.
+- Dashboard NDVI fase 1.
+- Dashboard NDVI dan sensor fase 2.
+- Dashboard deteksi hama dan rekomendasi.
+- Health check koneksi Firebase.
+- Seed data dummy untuk development.
+
+## Tech Stack
+
+| Area | Tooling |
+| --- | --- |
+| Framework | Next.js 16 App Router |
+| UI | React 19, Tailwind CSS v4 |
+| Data fetching | TanStack Query |
+| Map | Leaflet, React Leaflet |
+| Database | Cloud Firestore |
+| Storage | Firebase Storage |
+| Runtime/package manager | Bun |
+
+## Getting Started
+
+Install dependencies:
 
 ```bash
 bun install
 ```
 
-Buat file `.env` di root project. Contoh variabel tersedia di `.env.example`.
+Create `.env` in the project root:
 
 ```env
 NEXT_PUBLIC_FIREBASE_API_KEY=
@@ -74,39 +51,45 @@ NEXT_PUBLIC_FIREBASE_APP_ID=
 NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
 ```
 
-Jalankan dev server:
+Run the app:
 
 ```bash
 bun run dev
 ```
 
-Buka:
+Open:
 
 ```txt
 http://localhost:3000
 ```
 
-## Scripts
+## Commands
 
-```bash
-bun run dev
-bun run build
-bun run start
-bun run lint
-bun run seed:firebase
-```
+| Command | Description |
+| --- | --- |
+| `bun run dev` | Start local development server |
+| `bun run build` | Build production bundle |
+| `bun run start` | Start production server |
+| `bun run lint` | Run ESLint |
+| `bun run seed:firebase` | Seed Firestore with dummy lahan data |
 
-`seed:firebase` akan membuat data dummy Firestore untuk beberapa lahan, grid, titik inspeksi, sensor, dan hama.
+## Environment
+
+Firebase config is read from `.env`.
+
+`.env.example` is committed as a template. Real env files are ignored by Git.
+
+The dashboard can still render without Firestore data because the UI has a local mock fallback. Once Firebase config and Firestore data are ready, the app reads from Firestore automatically.
 
 ## Health Check
 
 Endpoint:
 
 ```txt
-/api/health
+GET /api/health
 ```
 
-Contoh response sukses:
+Example:
 
 ```json
 {
@@ -120,33 +103,27 @@ Contoh response sukses:
 }
 ```
 
-Endpoint ini hanya menampilkan status koneksi, project ID, dan jumlah dokumen `lahan`. Tidak menampilkan API key atau isi data.
+The endpoint only returns connection status and document counts. It does not expose API keys or document contents.
 
-## Sumber Data UI
-
-UI lama tetap memanggil fungsi di `components/map-api.ts`. File ini menjadi adaptor agar UI tidak perlu tahu sumber data mentahnya.
-
-Urutan sumber data:
-
-1. Jika `NEXT_PUBLIC_SERVER_URL` ada, pakai API server lama.
-2. Jika env Firebase lengkap, pakai Firestore melalui `services/lahan-service.ts`.
-3. Jika gagal atau belum ada data, fallback ke mock `Sawah Demo`.
-
-Alur:
+## Data Flow
 
 ```txt
-UI
--> components/map-api.ts
--> services/lahan-service.ts
--> lib/firebase.ts
--> Firestore
+UI components
+  -> components/map-api.ts
+  -> services/lahan-service.ts
+  -> lib/firebase.ts
+  -> Cloud Firestore
 ```
 
-## Struktur Firestore
+`components/map-api.ts` acts as a compatibility adapter for the UI. It keeps the screen components stable while the backing data source changes.
 
-Firestore tidak membutuhkan schema migration seperti PostgreSQL. Collection dan document dibuat otomatis saat data pertama ditulis.
+Data source priority:
 
-Struktur utama:
+1. Legacy API if `NEXT_PUBLIC_SERVER_URL` is configured.
+2. Firestore if Firebase env values are complete.
+3. Local mock data if Firebase is not ready or data fetch fails.
+
+## Firestore Model
 
 ```txt
 lahan/{fieldCode}
@@ -156,7 +133,7 @@ lahan/{fieldCode}/inspection_points/{pointCode}/sensor_readings/{readingId}
 lahan/{fieldCode}/hama_detections/{detectionId}
 ```
 
-Contoh:
+Example:
 
 ```txt
 lahan/SW001
@@ -166,70 +143,114 @@ lahan/SW001/inspection_points/P1/sensor_readings/reading_G-A01
 lahan/SW001/hama_detections/detection_001
 ```
 
-Kontrak lengkap ada di:
+Firestore creates collections and documents automatically when data is written. There is no schema migration step like SQL databases.
+
+## Firebase Services
 
 ```txt
-docs/kontrak_firebase_function_danan.md
+lib/firebase.ts
 ```
 
-## Seeding Firestore
+Initializes Firebase app, Firestore, and Storage.
 
-Pastikan Firestore Database sudah dibuat dan rules development mengizinkan write. Untuk seed awal:
+```txt
+services/lahan-service.ts
+```
+
+Contains Firestore reads for:
+
+- lahan list
+- single lahan detail
+- grids
+- inspection points
+- latest sensor readings
+- hama detections
+
+```txt
+types/lahan.ts
+```
+
+Defines the TypeScript contract for Firestore documents.
+
+## Seeding Data
+
+Before seeding, make sure:
+
+- Firestore Database has been created.
+- Firestore rules allow writes during development.
+- `.env` contains valid Firebase config.
+
+Run:
 
 ```bash
 bun run seed:firebase
 ```
 
-Script ini akan:
+The seed creates:
 
-- Menghapus data seed `SW001` sampai `SW004` jika ada.
-- Membuat dokumen `lahan`.
-- Membuat 20 x 25 grid per lahan.
-- Menaruh hasil NDVI/cluster langsung di dokumen grid.
-- Membuat 4 titik inspeksi per lahan.
-- Membuat sensor readings di bawah setiap inspection point.
-- Membuat 1 hama detection per lahan.
+- 4 lahan documents
+- 20 x 25 grids per lahan
+- NDVI and cluster values on each grid
+- 4 inspection points per lahan
+- sensor readings under inspection points
+- 1 hama detection per lahan
 
-Catatan: script seed memakai Firebase Web SDK, jadi operasi write mengikuti Firestore Security Rules. Untuk production, lebih baik seed/admin write memakai Admin SDK atau Firebase Function.
+## Security Notes
 
-## Security Rules
+Development mode can temporarily use permissive Firestore rules. Do not keep permissive rules in production.
 
-Untuk development, test mode boleh dipakai sementara agar seed dan dashboard bisa berjalan.
+Production direction:
 
-Untuk production, jangan biarkan:
+- Dashboard should read only the data it needs.
+- Writes should come from trusted Firebase Functions or Admin SDK.
+- User-based access should use Firebase Auth and custom claims when login is introduced.
 
-```txt
-allow read, write: if true;
-```
+## Storage Notes
 
-Target production yang lebih aman:
+The dashboard can display direct HTTP/HTTPS image URLs.
 
-- Dashboard hanya read.
-- Write dilakukan oleh Firebase Function/Admin SDK.
-- Jika ada login, read/write dibatasi berdasarkan Firebase Auth dan custom claims.
+If Firestore stores `gs://...` paths, the browser cannot render them directly. In that case either:
 
-## Storage URL
+- Firebase Functions should store download URLs, or
+- the frontend should convert Storage paths to download URLs with Firebase Storage SDK.
 
-Dashboard hanya bisa menampilkan URL gambar HTTP/HTTPS langsung. Jika Firestore menyimpan `gs://...`, browser tidak bisa langsung memuatnya sebagai gambar.
-
-Pilihan yang disarankan:
-
-- Firebase Function menyimpan download URL HTTPS di `rgbUrl`, `ndviUrl`, `clusterUrl`, dan `imageUrl`.
-- Atau frontend menambahkan helper untuk mengubah `gs://` menjadi download URL via Firebase Storage SDK.
-
-Untuk saat ini, URL `gs://` dianggap belum siap ditampilkan dan akan diabaikan oleh adaptor UI.
-
-## Repo Lama
-
-`old_repo/` hanya dipakai sebagai referensi migrasi lokal dan di-ignore oleh Git. Source aplikasi aktif ada di root repo ini.
-
-## Catatan Next.js
-
-Project ini memakai Next.js 16. Jika perlu mengubah API Next, baca dulu dokumentasi lokal di:
+## Project Map
 
 ```txt
-node_modules/next/dist/docs/
+app/
+  api/health/route.ts
+  maps/page.tsx
+  overview/page.tsx
+  fase-1/ndvi/page.tsx
+  fase-2/ndvi/page.tsx
+  fase-2/hama/page.tsx
+  settings/page.tsx
+
+components/
+  map-ui.tsx
+  map-api.ts
+  app-shell.tsx
+  sidebar.tsx
+
+lib/
+  firebase.ts
+
+services/
+  lahan-service.ts
+
+scripts/
+  seed-firebase-lahan.ts
+
+types/
+  lahan.ts
+
+docs/
+  kontrak_firebase_function_danan.md
+  panduan_migrasi_repo_firebase.md
 ```
 
-Instruksi ini mengikuti `AGENTS.md` repo.
-# jagapadi-riim-v2
+## Documentation
+
+- Data contract: `docs/kontrak_firebase_function_danan.md`
+- Migration guide: `docs/panduan_migrasi_repo_firebase.md`
+- Next.js local docs: `node_modules/next/dist/docs/`
