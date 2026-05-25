@@ -27,6 +27,29 @@ a {
   text-decoration: none;
 }
 
+.table-scrollbar {
+  scrollbar-color: #e2e8f0 #ffffff;
+}
+
+.table-scrollbar::-webkit-scrollbar {
+  height: 12px;
+  width: 12px;
+}
+
+.table-scrollbar::-webkit-scrollbar-track {
+  background: #ffffff;
+}
+
+.table-scrollbar::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
+}
+
+.table-scrollbar::-webkit-scrollbar-corner {
+  background: #ffffff;
+}
+
 .leaflet-control-container .leaflet-bar {
   border: none;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);

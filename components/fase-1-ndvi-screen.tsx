@@ -393,7 +393,7 @@ export default function Fase1NdviScreen({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="table-scrollbar overflow-x-auto">
           <table className="w-full min-w-[1320px] border-collapse text-center">
             <thead>
               <tr className="border-b border-slate-300 bg-slate-100">

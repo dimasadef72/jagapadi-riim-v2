@@ -1720,7 +1720,7 @@ function LayerDataPanel({
       </div>
 
       <div
-        className={`min-h-0 flex-1 overflow-y-auto bg-white ${
+        className={`table-scrollbar min-h-0 flex-1 overflow-y-auto bg-white ${
           sheetState === "collapsed" ? "sm:hidden" : ""
         }`}
       >
