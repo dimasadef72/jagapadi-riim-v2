@@ -62,6 +62,7 @@ export type MapGrid = {
     median: number | null;
     variance: number | null;
     p25: number | null;
+    p50: number | null;
     p75: number | null;
   } | null;
   sensor: {
@@ -120,6 +121,7 @@ export type PhaseTableRow = {
   median?: string;
   variance?: string;
   p25?: string;
+  p50?: string;
   p75?: string;
   cluster?: string;
   co2?: string;
@@ -204,6 +206,7 @@ function createMockGrid(
       median: mean + 0.01,
       variance: 0.0009,
       p25: mean - 0.02,
+      p50: mean + 0.01,
       p75: mean + 0.02,
     },
     sensor: {
@@ -427,6 +430,7 @@ function toMapGrid(
       median: grid.ndviMedian ?? null,
       variance: grid.ndviVariance ?? null,
       p25: grid.ndviP25 ?? null,
+      p50: grid.ndviP50 ?? grid.ndviMedian ?? null,
       p75: grid.ndviP75 ?? null,
     },
     sensor: latestSensor
@@ -480,7 +484,7 @@ async function fetchFirebaseLahanMapData(lahanId: string): Promise<LahanMapData>
     lahan: {
       id: fieldCode,
       fieldCode,
-      name: lahan.name || fieldCode,
+      name: fieldCode,
       bounds,
       center: centerFromBounds(bounds),
       capturedAt: timestampToString(lahan.capturedAt),
@@ -553,6 +557,7 @@ export function toNdviTableRow(grid: MapGrid): PhaseTableRow {
     median: formatNumber(grid.ndvi?.median, 3),
     variance: formatNumber(grid.ndvi?.variance, 5),
     p25: formatNumber(grid.ndvi?.p25, 3),
+    p50: formatNumber(grid.ndvi?.p50, 3),
     p75: formatNumber(grid.ndvi?.p75, 3),
     cluster: formatCluster(grid.ndvi?.clusterLabel),
     co2: formatNumber(grid.sensor?.co2Ppm, 1),

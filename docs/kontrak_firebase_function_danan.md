@@ -2,8 +2,8 @@
 
 Dokumen ini menjelaskan data yang perlu dibuat oleh Firebase Function setelah Android mengupload gambar sawah. Fokusnya adalah menyamakan kebutuhan antara:
 
-- Android: hanya upload gambar.
-- Firebase Function fase 1: generate identitas lahan, proses NDVI/cluster, simpan hasil.
+- Android: generate `fieldCode` lalu upload gambar.
+- Firebase Function fase 1: memakai `fieldCode` dari Android, proses NDVI/cluster, simpan hasil.
 - Sensor lingkungan fase 2: datang ke titik inspeksi dan mengirim hasil pembacaan sensor.
 - Web dashboard: membaca data lahan, grid, hasil NDVI, titik inspeksi, dan hasil sensor.
 
@@ -13,10 +13,11 @@ Referensi schema sementara ada di `packages/db/src/schema/lahan.ts`.
 
 ```txt
 Fase 1:
-Android upload gambar
+Android generate fieldCode
+-> Android upload gambar dengan fieldCode
 -> Firebase Storage menerima file
 -> Firebase Function trigger
--> Function generate fieldCode dan name
+-> Function membaca fieldCode dari path/metadata upload
 -> Function proses NDVI dan cluster
 -> Function menghasilkan grid, NDVI per grid, dan titik inspeksi
 -> Function simpan hasil ke Firestore/Storage
@@ -27,41 +28,47 @@ Petugas/alat turun ke titik inspeksi
 -> Hasil sensor disimpan di inspection point
 
 Terpisah:
-Deteksi hama disimpan sebagai event sendiri di level lahan
+Deteksi hama disimpan sebagai event sendiri di level capture
 ```
 
-Android tidak perlu mengirim `fieldCode` atau `name`.
+Android wajib mengirim `fieldCode` saat upload agar Function tahu document lahan yang harus dibuat atau diperbarui.
 
-## Generate Identitas Lahan
+## Identitas Lahan dari Android
 
-Karena Android hanya upload gambar, identitas lahan dibuat otomatis oleh Function.
+Identitas lahan dibuat dari sisi Android. Function tidak membuat counter `SW001`, `SW002`, dan seterusnya.
 
-Gunakan counter di Firestore:
-
-```txt
-counters/lahan
-{
-  lastNumber: 0
-}
-```
-
-Saat upload baru:
+Minimal metadata upload dari Android:
 
 ```txt
-lastNumber = 0
-nextNumber = 1
 fieldCode = SW001
-name = Sawah 1
 ```
 
-Saat upload berikutnya:
+Ada dua cara yang disarankan.
+
+1. Simpan `fieldCode` di path Storage:
 
 ```txt
-fieldCode = SW002
-name = Sawah 2
+uploads/lahan/SW001/raw/original.png
 ```
 
-Counter harus diupdate dengan transaction agar tidak ada dua upload yang mendapat kode sama.
+2. Simpan `fieldCode` sebagai custom metadata file upload:
+
+```txt
+metadata.fieldCode = SW001
+```
+
+Function harus membaca `fieldCode` dari path atau metadata tersebut, lalu menulis hasil ke:
+
+```txt
+lahan/{fieldCode}
+lahan/{fieldCode}/captures/{captureId}
+```
+
+Catatan:
+
+- Jika Android membuat format berurutan seperti `SW001`, Android harus memastikan tidak ada duplikasi.
+- Jika ingin lebih aman dari bentrok, Android bisa memakai ID unik seperti UUID, misalnya `SW-9F1A7C`.
+- `fieldCode` adalah identitas utama yang dipakai dashboard untuk membaca data.
 
 ## Struktur Firestore yang Disarankan
 
@@ -69,24 +76,126 @@ Gunakan `fieldCode` sebagai document ID lahan.
 
 ```txt
 lahan/{fieldCode}
-lahan/{fieldCode}/grids/{gridCode}
-lahan/{fieldCode}/inspection_points/{pointCode}
-lahan/{fieldCode}/inspection_points/{pointCode}/sensor_readings/{readingId}
-lahan/{fieldCode}/hama_detections/{detectionId}
+lahan/{fieldCode}/meta/capture_counter
+lahan/{fieldCode}/captures/{captureId}
+lahan/{fieldCode}/captures/{captureId}/grids/{gridCode}
+lahan/{fieldCode}/captures/{captureId}/inspection_points/{pointCode}
+lahan/{fieldCode}/captures/{captureId}/inspection_points/{pointCode}/sensor_readings/{readingId}
+lahan/{fieldCode}/captures/{captureId}/hama_detections/{detectionId}
 ```
 
 Contoh:
 
 ```txt
 lahan/SW001
-lahan/SW001/grids/G-A01
-lahan/SW001/inspection_points/P1
-lahan/SW001/inspection_points/P1/sensor_readings/reading_001
+lahan/SW001/meta/capture_counter
+lahan/SW001/captures/CAP001
+lahan/SW001/captures/CAP001/grids/G-A01
+lahan/SW001/captures/CAP001/inspection_points/P1
+lahan/SW001/captures/CAP001/inspection_points/P1/sensor_readings/reading_001
 ```
+
+Struktur visual di Firestore:
+
+```txt
+lahan                                      collection
+  SW001                                    document
+    fieldCode
+    topLeft
+    topRight
+    bottomRight
+    bottomLeft
+    createdAt
+    updatedAt
+
+    meta                                   subcollection
+      capture_counter                      document
+        lastNumber
+        updatedAt
+
+    captures                               subcollection
+      CAP001                               document
+        captureId
+        fieldCode
+        rgbUrl
+        ndviUrl
+        clusterUrl
+        capturedAt
+        createdAt
+
+        grids                              subcollection
+          G-A01                            document
+            gridCode
+            rowIndex
+            colIndex
+            topLeft
+            topRight
+            bottomRight
+            bottomLeft
+            clusterId
+            clusterLabel
+            ndviMean
+            ndviMin
+            ndviMax
+            ndviStddev
+            ndviMedian
+            ndviVariance
+            ndviP25
+            ndviP50
+            ndviP75
+            createdAt
+
+        inspection_points                  subcollection
+          P1                               document
+            pointCode
+            clusterId
+            clusterLabel
+            inspectionLat
+            inspectionLng
+            representativeGridCodes
+            createdAt
+
+            sensor_readings                subcollection
+              reading_001                  document
+                pointCode
+                latitude
+                longitude
+                co2Ppm
+                nh3Ppm
+                coPpm
+                no2Ppm
+                temperatureC
+                humidityPct
+                recordedAt
+
+        hama_detections                    subcollection
+          detection_001                    document
+            gridCode
+            latitude
+            longitude
+            areaName
+            status
+            jenisHama
+            tingkatSerangan
+            rekomendasi
+            imageUrl
+            detectedAt
+```
+
+Aturan penting:
+
+- Firestore selalu berurutan `collection/document/collection/document`.
+- `lahan` adalah collection utama.
+- `SW001` adalah document ID yang sama dengan `fieldCode` dari Android.
+- `captures` menyimpan riwayat/time series pengambilan data untuk satu lahan.
+- `meta/capture_counter` menyimpan nomor capture terakhir untuk membuat ID seperti `CAP001`, `CAP002`, dan seterusnya.
+- Capture terbaru bisa diambil dengan query `captures` berdasarkan `capturedAt` descending dan `limit(1)`.
+- `grids`, `inspection_points`, dan `hama_detections` adalah subcollection di dalam document capture.
+- `sensor_readings` adalah subcollection di dalam document titik inspeksi.
 
 ## Collection: `lahan`
 
-Data utama satu sawah/lahan.
+Data identitas satu sawah/lahan. Hasil analisis time series disimpan di subcollection `captures`, bukan langsung di document ini.
 
 Path:
 
@@ -99,16 +208,12 @@ Contoh document:
 ```json
 {
   "fieldCode": "SW001",
-  "name": "Sawah 1",
   "topLeft": { "lat": -8.151919744981786, "lng": 113.7375974115912 },
   "topRight": { "lat": -8.152064708104465, "lng": 113.73795447632318 },
   "bottomRight": { "lat": -8.152329532795992, "lng": 113.73784475507549 },
   "bottomLeft": { "lat": -8.152184569673313, "lng": 113.7374876903435 },
-  "rgbUrl": "gs://bucket/lahan/SW001/rgb.png",
-  "ndviUrl": "gs://bucket/lahan/SW001/ndvi.png",
-  "clusterUrl": "gs://bucket/lahan/SW001/cluster.png",
-  "capturedAt": "2026-05-25T03:00:00.000Z",
-  "createdAt": "serverTimestamp"
+  "createdAt": "serverTimestamp",
+  "updatedAt": "serverTimestamp"
 }
 ```
 
@@ -116,36 +221,121 @@ Field wajib:
 
 | Field | Tipe | Dibuat oleh | Catatan |
 | --- | --- | --- | --- |
-| `fieldCode` | string | Function | Contoh `SW001`. Sama dengan document ID. |
-| `name` | string | Function | Contoh `Sawah 1`. |
+| `fieldCode` | string | Android | Contoh `SW001`. Sama dengan document ID. |
 | `topLeft` | object `{ lat, lng }` | Function | Sudut kiri atas lahan/gambar georeferenced. |
 | `topRight` | object `{ lat, lng }` | Function | Sudut kanan atas. |
 | `bottomRight` | object `{ lat, lng }` | Function | Sudut kanan bawah. |
 | `bottomLeft` | object `{ lat, lng }` | Function | Sudut kiri bawah. |
 | `createdAt` | timestamp | Function | Waktu record dibuat. |
-
-Field hasil file/proses:
-
-| Field | Tipe | Wajib? | Catatan |
-| --- | --- | --- | --- |
-| `rgbUrl` | string/null | Opsional | URL gambar RGB/original. |
-| `ndviUrl` | string/null | Opsional | URL hasil NDVI. |
-| `clusterUrl` | string/null | Opsional | URL gambar visual cluster. |
-| `capturedAt` | timestamp/null | Opsional | Kalau ada metadata waktu capture gambar. |
+| `updatedAt` | timestamp | Function | Waktu record terakhir diubah. |
 
 Catatan penting:
 
 - Kalau gambar upload tidak punya koordinat/georeference, Function perlu sumber lain untuk mengisi 4 sudut lahan.
 - Web dashboard butuh 4 sudut ini untuk menaruh overlay gambar di peta.
+- Jika lahan yang sama diupload lagi di minggu/hari berbeda, jangan overwrite grid lama. Buat document baru di `captures`.
 
-## Subcollection: `grids`
+## Subcollection: `meta`
 
-Grid adalah pecahan area lahan. Grid bukan titik inspeksi.
+Metadata internal per lahan. Untuk sequence capture, Function cukup memakai counter per `fieldCode`.
 
 Path:
 
 ```txt
-lahan/{fieldCode}/grids/{gridCode}
+lahan/{fieldCode}/meta/capture_counter
+```
+
+Contoh document:
+
+```json
+{
+  "lastNumber": 1,
+  "updatedAt": "serverTimestamp"
+}
+```
+
+Cara pakai:
+
+```txt
+Function baca lastNumber dengan transaction
+nextNumber = lastNumber + 1
+captureId = CAP + nextNumber tiga digit
+contoh: CAP001, CAP002, CAP003
+Function update lastNumber
+Function tulis hasil ke lahan/{fieldCode}/captures/{captureId}
+```
+
+Catatan:
+
+- Counter ini harus diupdate dengan transaction agar dua upload bersamaan tidak mendapat `captureId` yang sama.
+- Counter ini hanya untuk membuat ID capture yang rapi.
+- Untuk mengambil capture terbaru, tetap pakai `capturedAt`, bukan `lastNumber`.
+
+## Subcollection: `captures`
+
+Capture adalah satu hasil pengambilan/proses data untuk satu lahan pada waktu tertentu. Ini dipakai untuk time series.
+
+Path:
+
+```txt
+lahan/{fieldCode}/captures/{captureId}
+```
+
+Contoh document:
+
+```json
+{
+  "captureId": "CAP001",
+  "fieldCode": "SW001",
+  "rgbUrl": "gs://bucket/lahan/SW001/captures/CAP001/rgb.png",
+  "ndviUrl": "gs://bucket/lahan/SW001/captures/CAP001/ndvi.png",
+  "clusterUrl": "gs://bucket/lahan/SW001/captures/CAP001/cluster.png",
+  "capturedAt": "2026-05-25T03:00:00.000Z",
+  "createdAt": "serverTimestamp"
+}
+```
+
+Field wajib:
+
+| Field | Tipe | Catatan |
+| --- | --- | --- |
+| `captureId` | string | Sama dengan document ID capture. Contoh `CAP001`. |
+| `fieldCode` | string | Kode lahan pemilik capture. |
+| `capturedAt` | timestamp | Waktu gambar/data diambil. Dipakai untuk sort time series. |
+| `createdAt` | timestamp | Waktu record dibuat. |
+
+Field hasil file/proses:
+
+| Field | Tipe | Wajib? | Catatan |
+| --- | --- | --- | --- |
+| `rgbUrl` | string/null | Opsional | URL gambar RGB/original untuk capture ini. |
+| `ndviUrl` | string/null | Opsional | URL hasil NDVI untuk capture ini. |
+| `clusterUrl` | string/null | Opsional | URL gambar visual cluster untuk capture ini. |
+
+Catatan:
+
+- `captureId` dibuat dari counter per lahan, misalnya `CAP001`, `CAP002`, dan seterusnya.
+- Capture terbaru tidak perlu disimpan di parent lahan. Dashboard bisa query `captures` dengan `orderBy("capturedAt", "desc")` dan `limit(1)`.
+- Field `capturedAt` wajib konsisten karena dipakai untuk mengambil capture terbaru dan membuat grafik time series.
+
+Contoh query capture terbaru di web:
+
+```ts
+query(
+  collection(db, "lahan", fieldCode, "captures"),
+  orderBy("capturedAt", "desc"),
+  limit(1),
+);
+```
+
+## Subcollection: `grids`
+
+Grid adalah pecahan area lahan untuk satu capture. Grid bukan titik inspeksi.
+
+Path:
+
+```txt
+lahan/{fieldCode}/captures/{captureId}/grids/{gridCode}
 ```
 
 Contoh document:
@@ -159,6 +349,7 @@ Contoh document:
   "topRight": { "lat": -8.151925543507, "lng": 113.737611694180 },
   "bottomRight": { "lat": -8.151938784742, "lng": 113.737606208117 },
   "bottomLeft": { "lat": -8.151932986217, "lng": 113.737591925528 },
+  "clusterId": "C1",
   "clusterLabel": "hijau",
   "ndviMean": 0.56,
   "ndviMin": 0.51,
@@ -167,6 +358,7 @@ Contoh document:
   "ndviMedian": 0.56,
   "ndviVariance": 0.0004,
   "ndviP25": 0.53,
+  "ndviP50": 0.56,
   "ndviP75": 0.59,
   "createdAt": "serverTimestamp"
 }
@@ -183,11 +375,13 @@ Field wajib:
 | `topRight` | object `{ lat, lng }` | Sudut kanan atas grid. |
 | `bottomRight` | object `{ lat, lng }` | Sudut kanan bawah grid. |
 | `bottomLeft` | object `{ lat, lng }` | Sudut kiri bawah grid. |
+| `clusterId` | string | ID cluster/titik inspeksi yang mewakili grid ini. Contoh `C1`. |
 
 Field hasil NDVI per grid:
 
 | Field | Tipe | Wajib? | Catatan |
 | --- | --- | --- | --- |
+| `clusterId` | string | Wajib | Harus sama dengan salah satu `inspection_points.{pointCode}.clusterId`. |
 | `clusterLabel` | string | Wajib | Nilai: `hijau`, `kuning`, atau `merah`. |
 | `ndviMean` | number/null | Minimal wajib | Nilai rata-rata NDVI grid. |
 | `ndviMin` | number/null | Opsional | Nilai minimum NDVI grid. |
@@ -196,22 +390,24 @@ Field hasil NDVI per grid:
 | `ndviMedian` | number/null | Opsional | Median NDVI. |
 | `ndviVariance` | number/null | Opsional | Variance NDVI. |
 | `ndviP25` | number/null | Opsional | Percentile 25. |
+| `ndviP50` | number/null | Opsional | Percentile 50. Biasanya sama atau dekat dengan median. |
 | `ndviP75` | number/null | Opsional | Percentile 75. |
 
 Catatan:
 
 - Di schema SQL saat ini, hasil cluster per grid ada di tabel `grid_cluster_result`.
 - Untuk Firestore, hasil cluster per grid boleh digabung langsung ke document grid agar query web lebih sederhana.
+- `clusterId` menghubungkan grid ke cluster/titik inspeksi. Banyak grid bisa memiliki `clusterId` yang sama.
 - Grid dipakai untuk visualisasi sebaran NDVI/cluster di peta.
 
 ## Subcollection: `inspection_points`
 
-Titik inspeksi adalah hasil clusterisasi pada level lahan. Satu lahan biasanya punya 3-4 titik inspeksi, bukan satu titik per grid. Titik ini menjadi target fase 2: petugas/alat turun ke titik tersebut untuk mengambil data sensor lingkungan.
+Titik inspeksi adalah hasil clusterisasi pada level capture. Satu capture biasanya punya 3-4 titik inspeksi, bukan satu titik per grid. Titik ini menjadi target fase 2: petugas/alat turun ke titik tersebut untuk mengambil data sensor lingkungan.
 
 Path:
 
 ```txt
-lahan/{fieldCode}/inspection_points/{pointCode}
+lahan/{fieldCode}/captures/{captureId}/inspection_points/{pointCode}
 ```
 
 Contoh document:
@@ -219,6 +415,7 @@ Contoh document:
 ```json
 {
   "pointCode": "P1",
+  "clusterId": "C1",
   "clusterLabel": "merah",
   "inspectionLat": -8.15198,
   "inspectionLng": 113.73768,
@@ -232,6 +429,7 @@ Field wajib:
 | Field | Tipe | Catatan |
 | --- | --- | --- |
 | `pointCode` | string | Contoh `P1`, `P2`, `P3`. Sama dengan document ID. |
+| `clusterId` | string | ID cluster yang diwakili titik inspeksi ini. Contoh `C1`. |
 | `clusterLabel` | string | Nilai: `hijau`, `kuning`, atau `merah`. |
 | `inspectionLat` | number | Latitude titik inspeksi hasil clusterisasi. |
 | `inspectionLng` | number | Longitude titik inspeksi hasil clusterisasi. |
@@ -242,8 +440,11 @@ Catatan:
 
 - Jangan simpan `inspectionLat` dan `inspectionLng` di setiap grid.
 - Titik inspeksi adalah centroid/rekomendasi kunjungan lapangan hasil clusterisasi.
+- Setiap titik inspeksi punya `clusterId`.
+- Setiap grid yang masuk cluster tersebut wajib menyimpan `clusterId` yang sama.
 - `representativeGridCodes` dipakai untuk menjelaskan sensor di titik ini mewakili grid mana saja.
-- Contoh: jika `P1.representativeGridCodes = ["G-A12"]`, maka detail grid tersebut ada di `lahan/SW001/grids/G-A12`.
+- Contoh: jika `P1.representativeGridCodes = ["G-A12"]`, maka detail grid tersebut ada di `lahan/SW001/captures/{captureId}/grids/G-A12`.
+- Contoh relasi: `inspection_points/P1.clusterId = "C1"` dan grid `G-A12.clusterId = "C1"`.
 
 ## Subcollection: `sensor_readings`
 
@@ -252,7 +453,7 @@ Data sensor adalah hasil fase 2. Sensor lingkungan diambil di titik inspeksi, la
 Path:
 
 ```txt
-lahan/{fieldCode}/inspection_points/{pointCode}/sensor_readings/{readingId}
+lahan/{fieldCode}/captures/{captureId}/inspection_points/{pointCode}/sensor_readings/{readingId}
 ```
 
 Contoh:
@@ -295,12 +496,12 @@ Catatan:
 
 ## Optional: `hama_detections`
 
-Data hama disimpan terpisah sebagai event/temuan di level lahan. Detection tidak wajib persis berada di titik inspeksi, jadi tidak perlu menjadi child dari `inspection_points`.
+Data hama disimpan terpisah sebagai event/temuan di level capture. Detection tidak wajib persis berada di titik inspeksi, jadi tidak perlu menjadi child dari `inspection_points`.
 
 Path:
 
 ```txt
-lahan/{fieldCode}/hama_detections/{detectionId}
+lahan/{fieldCode}/captures/{captureId}/hama_detections/{detectionId}
 ```
 
 Contoh:
@@ -315,7 +516,7 @@ Contoh:
   "jenisHama": "Bercak Cokelat",
   "tingkatSerangan": "sedang",
   "rekomendasi": "Pantau kelembapan kanopi dan lakukan pengamatan ulang.",
-  "imageUrl": "gs://bucket/lahan/SW001/hama/hama-001.png",
+  "imageUrl": "gs://bucket/lahan/SW001/captures/CAP001/hama/hama-001.png",
   "detectedAt": "2026-05-25T03:00:00.000Z"
 }
 ```
@@ -339,17 +540,27 @@ Kalau Function ingin dibuat bertahap, minimal data yang harus tersedia untuk das
 ```txt
 lahan/{fieldCode}
 - fieldCode
-- name
 - topLeft
 - topRight
 - bottomRight
 - bottomLeft
+- createdAt
+- updatedAt
+
+lahan/{fieldCode}/meta/capture_counter
+- lastNumber
+- updatedAt
+
+lahan/{fieldCode}/captures/{captureId}
+- captureId
+- fieldCode
+- capturedAt
 - rgbUrl atau raw image URL
 - ndviUrl
 - clusterUrl
 - createdAt
 
-lahan/{fieldCode}/grids/{gridCode}
+lahan/{fieldCode}/captures/{captureId}/grids/{gridCode}
 - gridCode
 - rowIndex
 - colIndex
@@ -357,11 +568,13 @@ lahan/{fieldCode}/grids/{gridCode}
 - topRight
 - bottomRight
 - bottomLeft
+- clusterId
 - clusterLabel
 - ndviMean
 
-lahan/{fieldCode}/inspection_points/{pointCode}
+lahan/{fieldCode}/captures/{captureId}/inspection_points/{pointCode}
 - pointCode
+- clusterId
 - clusterLabel
 - inspectionLat
 - inspectionLng
@@ -371,7 +584,7 @@ lahan/{fieldCode}/inspection_points/{pointCode}
 Output sensor fase 2:
 
 ```txt
-lahan/{fieldCode}/inspection_points/{pointCode}/sensor_readings/{readingId}
+lahan/{fieldCode}/captures/{captureId}/inspection_points/{pointCode}/sensor_readings/{readingId}
 - latitude
 - longitude
 - co2Ppm
@@ -385,14 +598,14 @@ lahan/{fieldCode}/inspection_points/{pointCode}/sensor_readings/{readingId}
 
 ## Storage Path yang Disarankan
 
-Simpan file hasil upload dan hasil proses per `fieldCode`.
+Simpan file hasil upload dan hasil proses per `fieldCode` dan `captureId`.
 
 ```txt
-lahan/SW001/raw/original.png
-lahan/SW001/rgb/rgb.png
-lahan/SW001/ndvi/ndvi.png
-lahan/SW001/cluster/cluster.png
-lahan/SW001/hama/hama-001.png
+lahan/SW001/captures/CAP001/raw/original.png
+lahan/SW001/captures/CAP001/rgb/rgb.png
+lahan/SW001/captures/CAP001/ndvi/ndvi.png
+lahan/SW001/captures/CAP001/cluster/cluster.png
+lahan/SW001/captures/CAP001/hama/hama-001.png
 ```
 
 Firestore cukup menyimpan URL atau path file tersebut.
@@ -401,15 +614,15 @@ Firestore cukup menyimpan URL atau path file tersebut.
 
 Hal yang perlu dipastikan dengan Danan:
 
-1. Apakah gambar upload punya metadata koordinat/georeference?
+1. Bagaimana Android membuat `fieldCode` dan memastikan tidak duplikat?
 2. Apakah Function bisa menghasilkan 4 sudut lahan: `topLeft`, `topRight`, `bottomRight`, `bottomLeft`?
 3. Berapa ukuran grid yang dipakai: tetap `20 x 25` atau dinamis?
-4. Apakah hasil cluster per grid hanya butuh `clusterLabel` dan `ndviMean`, atau semua statistik NDVI?
+4. Apakah hasil cluster per grid hanya butuh `clusterId`, `clusterLabel`, dan `ndviMean`, atau semua statistik NDVI?
 5. Berapa jumlah titik inspeksi yang dihasilkan: tetap 3 atau bisa 3-4?
 6. Apakah titik inspeksi diambil dari centroid cluster, grid terburuk, atau metode lain?
-7. Bagaimana cara Function menentukan `representativeGridCodes` untuk tiap titik inspeksi?
+7. Bagaimana cara Function menentukan `clusterId` dan `representativeGridCodes` untuk tiap titik inspeksi?
 8. Apakah `clusterUrl` adalah gambar overlay cluster final yang siap ditampilkan di map?
-9. Apakah sensor fase 2 akan mengirim `fieldCode` dan `pointCode` agar hasilnya bisa disimpan ke inspection point yang benar?
+9. Apakah sensor fase 2 akan mengirim `fieldCode`, `captureId`, dan `pointCode` agar hasilnya bisa disimpan ke inspection point yang benar?
 
 ## Ringkasan untuk Danan
 
@@ -417,30 +630,37 @@ Function fase 1 menerima upload gambar, lalu harus membuat:
 
 ```txt
 1. Lahan
-   - fieldCode otomatis dari counter, misalnya SW001
-   - name otomatis, misalnya Sawah 1
+   - fieldCode dari Android, misalnya SW001
    - 4 sudut koordinat lahan
+
+2. Counter capture
+   - Function cek `lahan/{fieldCode}/meta/capture_counter`
+   - Function membuat captureId berurutan, misalnya CAP001, CAP002, CAP003
+
+3. Capture
+   - captureId dari sequence per lahan, misalnya CAP001
+   - capturedAt sebagai waktu utama untuk sort time series
    - URL gambar RGB, NDVI, dan cluster
 
-2. Grid
-   - daftar grid dalam lahan
+4. Grid
+   - daftar grid dalam capture
    - kode grid, index baris/kolom, dan 4 sudut grid
-   - label cluster dan minimal ndviMean per grid
+   - clusterId, label cluster, dan minimal ndviMean per grid
 
-3. Titik inspeksi
-   - 3-4 titik per lahan
-   - pointCode, clusterLabel, inspectionLat, inspectionLng
+5. Titik inspeksi
+   - 3-4 titik per capture
+   - pointCode, clusterId, clusterLabel, inspectionLat, inspectionLng
    - representativeGridCodes, yaitu daftar grid yang diwakili titik tersebut
 ```
 
 Sensor fase 2 mengirim hasil pembacaan ke titik inspeksi:
 
 ```txt
-lahan/{fieldCode}/inspection_points/{pointCode}/sensor_readings/{readingId}
+lahan/{fieldCode}/captures/{captureId}/inspection_points/{pointCode}/sensor_readings/{readingId}
 ```
 
 Deteksi hama disimpan terpisah sebagai event:
 
 ```txt
-lahan/{fieldCode}/hama_detections/{detectionId}
+lahan/{fieldCode}/captures/{captureId}/hama_detections/{detectionId}
 ```

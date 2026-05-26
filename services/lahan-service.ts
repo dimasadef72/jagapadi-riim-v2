@@ -36,7 +36,7 @@ export async function getLahanList() {
     return {
       id: fieldCode,
       fieldCode,
-      name: data.name || fieldCode,
+      name: fieldCode,
     };
   });
 }

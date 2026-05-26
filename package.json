@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed:firebase": "bun --env-file=.env scripts/seed-firebase-lahan.ts"
+    "seed:firebase": "bun --env-file=.env scripts/seed-firebase-lahan.ts",
+    "seed:realtime": "bun --env-file=.env scripts/seed-realtime-lahan.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.97.0",

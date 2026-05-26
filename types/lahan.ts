@@ -7,7 +7,6 @@ export type ClusterLabel = "hijau" | "kuning" | "merah";
 
 export type Lahan = {
   fieldCode: string;
-  name: string;
   topLeft: LatLngPoint;
   topRight: LatLngPoint;
   bottomRight: LatLngPoint;
@@ -27,6 +26,7 @@ export type LahanGrid = {
   topRight: LatLngPoint;
   bottomRight: LatLngPoint;
   bottomLeft: LatLngPoint;
+  clusterId: string;
   clusterLabel: ClusterLabel;
   ndviMean: number | null;
   ndviMin?: number | null;
@@ -35,12 +35,14 @@ export type LahanGrid = {
   ndviMedian?: number | null;
   ndviVariance?: number | null;
   ndviP25?: number | null;
+  ndviP50?: number | null;
   ndviP75?: number | null;
   createdAt?: unknown;
 };
 
 export type InspectionPoint = {
   pointCode: string;
+  clusterId: string;
   clusterLabel: ClusterLabel;
   inspectionLat: number;
   inspectionLng: number;

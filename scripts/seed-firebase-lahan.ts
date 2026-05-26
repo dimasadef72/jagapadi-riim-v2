@@ -292,7 +292,6 @@ async function seedLahan() {
     await writeBatch(db)
       .set(fieldRef, {
         fieldCode: field.fieldCode,
-        name: field.name,
         ...field.corners,
         rgbUrl: imagePath(field.fieldCode, "rgb", field.layers.rgb),
         ndviUrl: imagePath(field.fieldCode, "ndvi", field.layers.ndvi),
@@ -315,6 +314,8 @@ async function seedLahan() {
         const spread = round(0.035 + deterministicNoise(lahanIndex * 5000 + gridNumber) * 0.04, 3);
         const stress = 1 - ndviMean;
         const clusterLabel = classifyNdvi(ndviMean);
+        const pointCode = `P${Math.floor(gridNumber / 125) + 1}`;
+        const clusterId = `C${Math.floor(gridNumber / 125) + 1}`;
 
         gridRows.push({ gridCode: code, rowIndex, colIndex, bounds, ndviMean, stress });
 
@@ -327,6 +328,7 @@ async function seedLahan() {
             topRight: bounds.topRight,
             bottomRight: bounds.bottomRight,
             bottomLeft: bounds.bottomLeft,
+            clusterId,
             clusterLabel,
             ndviMean,
             ndviMin: round(clamp(ndviMean - spread, 0, 1), 3),
@@ -338,14 +340,16 @@ async function seedLahan() {
             ),
             ndviVariance: round((spread / 2) ** 2, 5),
             ndviP25: round(clamp(ndviMean - spread / 2, 0, 1), 3),
+            ndviP50: round(
+              clamp(ndviMean + (deterministicNoise(gridNumber) - 0.5) * 0.025, 0, 1),
+              3,
+            ),
             ndviP75: round(clamp(ndviMean + spread / 2, 0, 1), 3),
             createdAt: new Date(),
           });
         });
 
         sensorWrites.push((batch) => {
-          const pointCode = `P${Math.floor(gridNumber / 125) + 1}`;
-
           batch.set(
             doc(
               db,
@@ -381,10 +385,12 @@ async function seedLahan() {
         next.ndviMean < current.ndviMean ? next : current,
       );
       const pointCode = `P${pointIndex + 1}`;
+      const clusterId = `C${pointIndex + 1}`;
 
       inspectionWrites.push((batch) => {
         batch.set(doc(db, "lahan", field.fieldCode, "inspection_points", pointCode), {
           pointCode,
+          clusterId,
           clusterLabel: classifyNdvi(worstGrid.ndviMean),
           inspectionLat: worstGrid.bounds.centerLat,
           inspectionLng: worstGrid.bounds.centerLng,
