@@ -31,10 +31,11 @@ if (
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-const ROW_COUNT = 20;
-const COL_COUNT = 25;
+const ROW_COUNT = 5;
+const COL_COUNT = 10;
+const INSPECTION_POINT_COUNT = 4;
 const GRID_COUNT_PER_LAHAN = ROW_COUNT * COL_COUNT;
-const rowLabels = "ABCDEFGHIJKLMNOPQRST".split("");
+const rowLabels = "ABCDE".split("");
 
 type LatLngPoint = {
   lat: number;
@@ -48,13 +49,28 @@ type FieldCorners = {
   bottomLeft: LatLngPoint;
 };
 
+type GridSeed = {
+  gridCode: string;
+  rowIndex: number;
+  colIndex: number;
+  bounds: FieldCorners & {
+    centerLat: number;
+    centerLng: number;
+  };
+  ndviMean: number;
+  clusterId: string;
+  clusterLabel: "hijau" | "kuning" | "merah";
+  stress: number;
+};
+
 const lahanSeedData = [
   {
     fieldCode: "SW001",
-    name: "Sawah 1",
+    sourceName: "seed_SW001_20260512",
     layers: {
       rgb: "Sawah1_RGB.jpg",
       ndvi: "Sawah1_NDVI.png",
+      cluster: "Sawah1_Cluster.png",
     },
     corners: {
       topLeft: { lat: -8.151919744981786, lng: 113.7375974115912 },
@@ -76,10 +92,11 @@ const lahanSeedData = [
   },
   {
     fieldCode: "SW002",
-    name: "Sawah 2",
+    sourceName: "seed_SW002_20260513",
     layers: {
       rgb: "Sawah2_RGB.jpg",
       ndvi: "Sawah2_NDVI.png",
+      cluster: "Sawah2_Cluster.png",
     },
     corners: {
       topLeft: { lat: -8.152197509794002, lng: 113.73759407564437 },
@@ -101,10 +118,11 @@ const lahanSeedData = [
   },
   {
     fieldCode: "SW003",
-    name: "Sawah 3",
+    sourceName: "seed_SW003_20260514",
     layers: {
       rgb: "Sawah3_RGB.jpg",
       ndvi: "Sawah3_NDVI.png",
+      cluster: "Sawah3_Cluster.png",
     },
     corners: {
       topLeft: { lat: -8.172965881903263, lng: 113.73935852638311 },
@@ -126,10 +144,11 @@ const lahanSeedData = [
   },
   {
     fieldCode: "SW004",
-    name: "Sawah 4",
+    sourceName: "seed_SW004_20260515",
     layers: {
       rgb: "Sawah4_RGB.jpg",
       ndvi: "Sawah4_NDVI.png",
+      cluster: "Sawah4_Cluster.png",
     },
     corners: {
       topLeft: { lat: -8.151830826353764, lng: 113.73763391796103 },
@@ -156,7 +175,11 @@ function round(value: number, digits = 6) {
 }
 
 function gridCode(rowIndex: number, colIndex: number) {
-  return `G-${rowLabels[rowIndex]}${String(colIndex + 1).padStart(2, "0")}`;
+  return `G${rowLabels[rowIndex]}${String(colIndex + 1).padStart(3, "0")}`;
+}
+
+function captureId(index: number) {
+  return `CAP${String(index).padStart(3, "0")}`;
 }
 
 function deterministicNoise(seed: number) {
@@ -236,8 +259,27 @@ function makeGridBounds(field: FieldCorners, rowIndex: number, colIndex: number)
   };
 }
 
-function imagePath(fieldCode: string, type: "rgb" | "ndvi" | "hama", fileName: string) {
-  return `gs://${firebaseConfig.storageBucket}/lahan/${fieldCode}/${type}/${fileName}`;
+function centerFromCorners(corners: FieldCorners) {
+  const points = [
+    corners.topLeft,
+    corners.topRight,
+    corners.bottomRight,
+    corners.bottomLeft,
+  ];
+
+  return {
+    lat: round(points.reduce((sum, point) => sum + point.lat, 0) / points.length, 12),
+    lng: round(points.reduce((sum, point) => sum + point.lng, 0) / points.length, 12),
+  };
+}
+
+function imagePath(
+  fieldCode: string,
+  capId: string,
+  type: "rgb" | "ndvi" | "cluster" | "hama",
+  fileName: string,
+) {
+  return `gs://${firebaseConfig.storageBucket}/lahan/${fieldCode}/captures/${capId}/${type}/${fileName}`;
 }
 
 async function deleteCollection(path: string) {
@@ -250,22 +292,47 @@ async function deleteCollection(path: string) {
 async function deleteExistingSeedData() {
   for (const field of lahanSeedData) {
     const fieldPath = `lahan/${field.fieldCode}`;
-    const points = await getDocs(collection(db, fieldPath, "inspection_points"));
+    const legacyPoints = await getDocs(collection(db, fieldPath, "inspection_points"));
+    const captures = await getDocs(collection(db, fieldPath, "captures"));
 
     await Promise.all(
-      points.docs.map((point) =>
+      legacyPoints.docs.map((point) =>
         deleteCollection(`${fieldPath}/inspection_points/${point.id}/sensor_readings`),
       ),
     );
 
+    await Promise.all(
+      captures.docs.map(async (capture) => {
+        const capturePath = `${fieldPath}/captures/${capture.id}`;
+        const points = await getDocs(collection(db, capturePath, "inspection_points"));
+
+        await Promise.all(
+          points.docs.map((point) =>
+            deleteCollection(`${capturePath}/inspection_points/${point.id}/sensor_readings`),
+          ),
+        );
+
+        await Promise.all([
+          deleteCollection(`${capturePath}/inspection_points`),
+          deleteCollection(`${capturePath}/hama_detections`),
+          deleteCollection(`${capturePath}/grids`),
+        ]);
+      }),
+    );
+
     await Promise.all([
+      deleteCollection(`${fieldPath}/captures`),
+      deleteCollection(`${fieldPath}/meta`),
       deleteCollection(`${fieldPath}/inspection_points`),
       deleteCollection(`${fieldPath}/hama_detections`),
       deleteCollection(`${fieldPath}/grids`),
     ]);
 
     await deleteDoc(doc(db, "lahan", field.fieldCode));
+    await deleteDoc(doc(db, "_meta", `src_${field.sourceName}`));
   }
+
+  await deleteDoc(doc(db, "_meta", "sawah_counter"));
 }
 
 async function commitInChunks(writes: Array<(batch: ReturnType<typeof writeBatch>) => void>) {
@@ -278,6 +345,59 @@ async function commitInChunks(writes: Array<(batch: ReturnType<typeof writeBatch
   }
 }
 
+function buildGridRows(lahanIndex: number, corners: FieldCorners) {
+  const gridRows: GridSeed[] = [];
+  const groupSize = Math.ceil(GRID_COUNT_PER_LAHAN / INSPECTION_POINT_COUNT);
+
+  for (let rowIndex = 0; rowIndex < ROW_COUNT; rowIndex += 1) {
+    for (let colIndex = 0; colIndex < COL_COUNT; colIndex += 1) {
+      const gridNumber = rowIndex * COL_COUNT + colIndex;
+      const pointIndex = Math.min(
+        INSPECTION_POINT_COUNT - 1,
+        Math.floor(gridNumber / groupSize),
+      );
+      const ndviMean = makeNdviMean(lahanIndex, rowIndex, colIndex);
+      const clusterId = `C${pointIndex + 1}`;
+      const clusterLabel = classifyNdvi(ndviMean);
+
+      gridRows.push({
+        gridCode: gridCode(rowIndex, colIndex),
+        rowIndex,
+        colIndex,
+        bounds: makeGridBounds(corners, rowIndex, colIndex),
+        ndviMean,
+        clusterId,
+        clusterLabel,
+        stress: 1 - ndviMean,
+      });
+    }
+  }
+
+  return gridRows;
+}
+
+function makeSensorReading(
+  point: GridSeed,
+  pointCode: string,
+  lahanIndex: number,
+  pointIndex: number,
+  readingIndex: number,
+) {
+  const seed = (lahanIndex + 1) * 1000 + (pointIndex + 1) * 100 + readingIndex;
+  const stress = point.stress;
+
+  return {
+    pointCode,
+    co2Ppm: round(405 + stress * 190 + deterministicNoise(seed + 11) * 35, 1),
+    nh3Ppm: round(0.08 + stress * 0.7 + deterministicNoise(seed + 23) * 0.08, 3),
+    coPpm: round(0.35 + stress * 1.7 + deterministicNoise(seed + 37) * 0.2, 3),
+    no2Ppm: round(0.02 + stress * 0.18 + deterministicNoise(seed + 41) * 0.025, 3),
+    temperatureC: round(27.2 + stress * 6.2 + deterministicNoise(seed + 53) * 1.1, 1),
+    humidityPct: round(84 - stress * 22 - deterministicNoise(seed + 67) * 4, 1),
+    recordedAt: new Date(Date.UTC(2026, 4, 15 + lahanIndex, 2 + readingIndex, pointIndex * 7)),
+  };
+}
+
 async function seedLahan() {
   await deleteExistingSeedData();
 
@@ -286,68 +406,140 @@ async function seedLahan() {
   let totalHama = 0;
   let totalInspectionPoints = 0;
 
+  const metaWrites: Array<(batch: ReturnType<typeof writeBatch>) => void> = [
+    (batch) => {
+      batch.set(doc(db, "_meta", "sawah_counter"), {
+        lastNumber: lahanSeedData.length,
+        updatedAt: new Date(),
+      });
+    },
+  ];
+
   for (const [lahanIndex, field] of lahanSeedData.entries()) {
     const fieldRef = doc(db, "lahan", field.fieldCode);
+    const capId = captureId(1);
+    const captureRef = doc(db, "lahan", field.fieldCode, "captures", capId);
+    const center = centerFromCorners(field.corners);
+    const gridRows = buildGridRows(lahanIndex, field.corners);
 
-    await writeBatch(db)
-      .set(fieldRef, {
-        fieldCode: field.fieldCode,
-        ...field.corners,
-        rgbUrl: imagePath(field.fieldCode, "rgb", field.layers.rgb),
-        ndviUrl: imagePath(field.fieldCode, "ndvi", field.layers.ndvi),
-        clusterUrl: null,
-        capturedAt: field.capturedAt,
-        createdAt: new Date(),
-      })
-      .commit();
+    metaWrites.push((batch) => {
+      batch.set(doc(db, "_meta", `src_${field.sourceName}`), {
+        sawahId: field.fieldCode,
+        captureId: capId,
+        updatedAt: new Date(),
+      });
+    });
+
+    const rootWrites: Array<(batch: ReturnType<typeof writeBatch>) => void> = [
+      (batch) => {
+        batch.set(fieldRef, {
+          fieldCode: field.fieldCode,
+          topLeft: field.corners.topLeft,
+          topRight: field.corners.topRight,
+          bottomRight: field.corners.bottomRight,
+          bottomLeft: field.corners.bottomLeft,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      },
+      (batch) => {
+        batch.set(doc(db, "lahan", field.fieldCode, "meta", "capture_counter"), {
+          lastNumber: 1,
+          updatedAt: new Date(),
+        });
+      },
+      (batch) => {
+        batch.set(captureRef, {
+          captureId: capId,
+          fieldCode: field.fieldCode,
+          gsd: null,
+          gsdUnit: "cm/pixel",
+          imageBounds: field.corners,
+          centerLat: center.lat,
+          centerLng: center.lng,
+          rgbUrl: imagePath(field.fieldCode, capId, "rgb", field.layers.rgb),
+          ndviUrl: imagePath(field.fieldCode, capId, "ndvi", field.layers.ndvi),
+          clusterUrl: imagePath(field.fieldCode, capId, "cluster", field.layers.cluster),
+          capturedAt: field.capturedAt,
+          createdAt: new Date(),
+        });
+      },
+    ];
 
     const gridWrites: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
-    const sensorWrites: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
-    const gridRows = [];
 
-    for (let rowIndex = 0; rowIndex < ROW_COUNT; rowIndex += 1) {
-      for (let colIndex = 0; colIndex < COL_COUNT; colIndex += 1) {
-        const code = gridCode(rowIndex, colIndex);
-        const bounds = makeGridBounds(field.corners, rowIndex, colIndex);
-        const gridNumber = rowIndex * COL_COUNT + colIndex + 1;
-        const ndviMean = makeNdviMean(lahanIndex, rowIndex, colIndex);
-        const spread = round(0.035 + deterministicNoise(lahanIndex * 5000 + gridNumber) * 0.04, 3);
-        const stress = 1 - ndviMean;
-        const clusterLabel = classifyNdvi(ndviMean);
-        const pointCode = `P${Math.floor(gridNumber / 125) + 1}`;
-        const clusterId = `C${Math.floor(gridNumber / 125) + 1}`;
+    gridRows.forEach((grid, gridIndex) => {
+      const spread = round(0.035 + deterministicNoise(lahanIndex * 5000 + gridIndex) * 0.04, 3);
+      const median = round(
+        clamp(grid.ndviMean + (deterministicNoise(gridIndex + 1) - 0.5) * 0.025, 0, 1),
+        3,
+      );
 
-        gridRows.push({ gridCode: code, rowIndex, colIndex, bounds, ndviMean, stress });
-
-        gridWrites.push((batch) => {
-          batch.set(doc(db, "lahan", field.fieldCode, "grids", code), {
-            gridCode: code,
-            rowIndex,
-            colIndex,
-            topLeft: bounds.topLeft,
-            topRight: bounds.topRight,
-            bottomRight: bounds.bottomRight,
-            bottomLeft: bounds.bottomLeft,
-            clusterId,
-            clusterLabel,
-            ndviMean,
-            ndviMin: round(clamp(ndviMean - spread, 0, 1), 3),
-            ndviMax: round(clamp(ndviMean + spread, 0, 1), 3),
+      gridWrites.push((batch) => {
+        batch.set(
+          doc(db, "lahan", field.fieldCode, "captures", capId, "grids", grid.gridCode),
+          {
+            gridCode: grid.gridCode,
+            rowIndex: grid.rowIndex,
+            colIndex: grid.colIndex,
+            topLeft: grid.bounds.topLeft,
+            topRight: grid.bounds.topRight,
+            bottomRight: grid.bounds.bottomRight,
+            bottomLeft: grid.bounds.bottomLeft,
+            clusterId: grid.clusterId,
+            clusterLabel: grid.clusterLabel,
+            spatialClusterId: grid.clusterId,
+            ndviMean: grid.ndviMean,
+            ndviMin: round(clamp(grid.ndviMean - spread, 0, 1), 3),
+            ndviMax: round(clamp(grid.ndviMean + spread, 0, 1), 3),
             ndviStddev: round(spread / 2, 3),
-            ndviMedian: round(
-              clamp(ndviMean + (deterministicNoise(gridNumber) - 0.5) * 0.025, 0, 1),
-              3,
-            ),
+            ndviMedian: median,
             ndviVariance: round((spread / 2) ** 2, 5),
-            ndviP25: round(clamp(ndviMean - spread / 2, 0, 1), 3),
-            ndviP50: round(
-              clamp(ndviMean + (deterministicNoise(gridNumber) - 0.5) * 0.025, 0, 1),
-              3,
-            ),
-            ndviP75: round(clamp(ndviMean + spread / 2, 0, 1), 3),
+            ndviP25: round(clamp(grid.ndviMean - spread / 2, 0, 1), 3),
+            ndviP50: median,
+            ndviP75: round(clamp(grid.ndviMean + spread / 2, 0, 1), 3),
             createdAt: new Date(),
-          });
-        });
+          },
+        );
+      });
+    });
+
+    const inspectionWrites: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
+    const sensorWrites: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
+    const groupSize = Math.ceil(gridRows.length / INSPECTION_POINT_COUNT);
+
+    for (let pointIndex = 0; pointIndex < INSPECTION_POINT_COUNT; pointIndex += 1) {
+      const pointCode = `P${pointIndex + 1}`;
+      const clusterId = `C${pointIndex + 1}`;
+      const pointGrids = gridRows.slice(pointIndex * groupSize, (pointIndex + 1) * groupSize);
+      const worstGrid = pointGrids.reduce((current, next) =>
+        next.ndviMean < current.ndviMean ? next : current,
+      );
+
+      inspectionWrites.push((batch) => {
+        batch.set(
+          doc(db, "lahan", field.fieldCode, "captures", capId, "inspection_points", pointCode),
+          {
+            pointCode,
+            clusterId,
+            clusterLabel: worstGrid.clusterLabel,
+            inspectionLat: worstGrid.bounds.centerLat,
+            inspectionLng: worstGrid.bounds.centerLng,
+            representativeGridCodes: pointGrids.map((grid) => grid.gridCode),
+            createdAt: new Date(),
+          },
+        );
+      });
+
+      for (let readingIndex = 0; readingIndex < 2; readingIndex += 1) {
+        const reading = makeSensorReading(
+          worstGrid,
+          pointCode,
+          lahanIndex,
+          pointIndex,
+          readingIndex,
+        );
+        const readingId = String(reading.recordedAt.getTime());
 
         sensorWrites.push((batch) => {
           batch.set(
@@ -355,52 +547,20 @@ async function seedLahan() {
               db,
               "lahan",
               field.fieldCode,
+              "captures",
+              capId,
               "inspection_points",
               pointCode,
               "sensor_readings",
-              `reading_${code}`,
+              readingId,
             ),
-            {
-              pointCode,
-              latitude: bounds.centerLat,
-              longitude: bounds.centerLng,
-              co2Ppm: round(405 + stress * 190 + deterministicNoise(gridNumber + 11) * 35, 1),
-              nh3Ppm: round(0.08 + stress * 0.7 + deterministicNoise(gridNumber + 23) * 0.08, 3),
-              coPpm: round(0.35 + stress * 1.7 + deterministicNoise(gridNumber + 37) * 0.2, 3),
-              no2Ppm: round(0.02 + stress * 0.18 + deterministicNoise(gridNumber + 41) * 0.025, 3),
-              temperatureC: round(27.2 + stress * 6.2 + deterministicNoise(gridNumber + 53) * 1.1, 1),
-              humidityPct: round(84 - stress * 22 - deterministicNoise(gridNumber + 67) * 4, 1),
-              recordedAt: new Date(Date.UTC(2026, 4, 15 + lahanIndex, 2, gridNumber % 60)),
-            },
+            reading,
           );
         });
       }
     }
 
-    const inspectionWrites: Array<(batch: ReturnType<typeof writeBatch>) => void> = [];
-
-    for (let pointIndex = 0; pointIndex < 4; pointIndex += 1) {
-      const pointGrids = gridRows.slice(pointIndex * 125, (pointIndex + 1) * 125);
-      const worstGrid = pointGrids.reduce((current, next) =>
-        next.ndviMean < current.ndviMean ? next : current,
-      );
-      const pointCode = `P${pointIndex + 1}`;
-      const clusterId = `C${pointIndex + 1}`;
-
-      inspectionWrites.push((batch) => {
-        batch.set(doc(db, "lahan", field.fieldCode, "inspection_points", pointCode), {
-          pointCode,
-          clusterId,
-          clusterLabel: classifyNdvi(worstGrid.ndviMean),
-          inspectionLat: worstGrid.bounds.centerLat,
-          inspectionLng: worstGrid.bounds.centerLng,
-          representativeGridCodes: pointGrids.map((grid) => grid.gridCode),
-          createdAt: new Date(),
-        });
-      });
-    }
-
-    const hamaGrid = gridRows[field.hama.gridIndex];
+    const hamaGrid = gridRows[field.hama.gridIndex % gridRows.length];
 
     if (!hamaGrid) {
       throw new Error(`Grid hama tidak ditemukan untuk ${field.fieldCode}`);
@@ -408,22 +568,31 @@ async function seedLahan() {
 
     const hamaWrites: Array<(batch: ReturnType<typeof writeBatch>) => void> = [
       (batch) => {
-        batch.set(doc(db, "lahan", field.fieldCode, "hama_detections", "detection_001"), {
-          gridCode: hamaGrid.gridCode,
-          latitude: hamaGrid.bounds.centerLat,
-          longitude: hamaGrid.bounds.centerLng,
-          areaName: field.hama.areaName,
-          status: field.hama.status,
-          jenisHama: field.hama.jenisHama,
-          tingkatSerangan: field.hama.tingkatSerangan,
-          rekomendasi: field.hama.rekomendasi,
-          imageUrl: imagePath(field.fieldCode, "hama", field.hama.imageUrl),
-          detectedAt: new Date(Date.UTC(2026, 4, 18 + lahanIndex, 3, 0)),
-        });
+        batch.set(
+          doc(db, "lahan", field.fieldCode, "captures", capId, "hama_detections", "detection_001"),
+          {
+            gridCode: hamaGrid.gridCode,
+            latitude: hamaGrid.bounds.centerLat,
+            longitude: hamaGrid.bounds.centerLng,
+            areaName: field.hama.areaName,
+            status: field.hama.status,
+            jenisHama: field.hama.jenisHama,
+            tingkatSerangan: field.hama.tingkatSerangan,
+            rekomendasi: field.hama.rekomendasi,
+            imageUrl: imagePath(field.fieldCode, capId, "hama", field.hama.imageUrl),
+            detectedAt: new Date(Date.UTC(2026, 4, 18 + lahanIndex, 3, 0)),
+          },
+        );
       },
     ];
 
-    await commitInChunks([...gridWrites, ...inspectionWrites, ...sensorWrites, ...hamaWrites]);
+    await commitInChunks([
+      ...rootWrites,
+      ...gridWrites,
+      ...inspectionWrites,
+      ...sensorWrites,
+      ...hamaWrites,
+    ]);
 
     totalGrids += gridRows.length;
     totalSensors += sensorWrites.length;
@@ -431,10 +600,13 @@ async function seedLahan() {
     totalHama += hamaWrites.length;
   }
 
+  await commitInChunks(metaWrites);
+
   console.log(
     [
       "Seed Firebase lahan selesai.",
       `Lahan: ${lahanSeedData.length}`,
+      `Capture per lahan: 1`,
       `Grid: ${totalGrids}`,
       `Inspection point: ${totalInspectionPoints}`,
       `Sensor reading: ${totalSensors}`,

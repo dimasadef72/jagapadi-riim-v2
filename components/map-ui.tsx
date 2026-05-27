@@ -15,17 +15,23 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   ChevronsLeft,
   ChevronsRight,
+  Pencil,
   Search,
   Loader2,
   MapPin,
+  Plus,
+  Trash2,
   LocateFixed,
   Layers,
   X,
@@ -49,13 +55,24 @@ import {
   fetchLahanMapData,
   getGridRectangleStyle,
   toHamaTableRow,
+  toInspectionTableRow,
+  toMapSensorReading,
   toNdviTableRow,
   type LahanMapData,
   type LahanOption,
   type MapImageLayer,
+  type MapInspectionPoint,
+  type MapSensorReading,
   type PhaseTableRow,
 } from "./map-api";
 import type { SelectedMapFeature } from "./types";
+import {
+  addSensorReading,
+  canUseFirebaseLahanService,
+  deleteSensorReading,
+  subscribeSensorReadings,
+  updateSensorReading,
+} from "@/services/lahan-service";
 
 // ... existing code down to MapClickHandler ...
 
@@ -80,10 +97,15 @@ function MapResizer() {
 function SelectedFeatureMarker({
   feature,
   onClose,
+  onOpenSensorModal,
   autoFocus = true,
 }: {
   feature: SelectedMapFeature;
   onClose: () => void;
+  onOpenSensorModal?: (
+    feature: SelectedMapFeature,
+    reading?: MapSensorReading,
+  ) => void;
   autoFocus?: boolean;
 }) {
   const markerRef = useRef<L.Marker>(null);
@@ -91,6 +113,7 @@ function SelectedFeatureMarker({
   const [showFase1Stats, setShowFase1Stats] = useState(true);
   const [showFase2NdviStats, setShowFase2NdviStats] = useState(true);
   const [showFase2SensorStats, setShowFase2SensorStats] = useState(true);
+  const [sensorHistoryIndex, setSensorHistoryIndex] = useState(0);
   const map = useMap();
 
   const updatePopupLayout = () => {
@@ -103,7 +126,11 @@ function SelectedFeatureMarker({
         markerRef.current?.openPopup();
       }, 150);
 
-      if (feature.mode === "default" && feature.data?.type === "lahan" && feature.data.bounds) {
+      if (
+        feature.mode === "default" &&
+        feature.data?.type === "lahan" &&
+        feature.data.bounds
+      ) {
         map.fitBounds(
           [
             [feature.data.bounds.minLat, feature.data.bounds.minLng],
@@ -134,6 +161,10 @@ function SelectedFeatureMarker({
   }, [autoFocus, feature, map]);
 
   useEffect(() => {
+    setSensorHistoryIndex(0);
+  }, [feature.data?.recordedAt, feature.id, feature.mode]);
+
+  useEffect(() => {
     if (!markerRef.current?.isPopupOpen()) {
       return;
     }
@@ -151,9 +182,6 @@ function SelectedFeatureMarker({
   if (feature.mode === "fase2-hama") {
     colorStart = "#e11d48";
     colorEnd = "#881337";
-  } else if (feature.mode === "fase2-ndvi") {
-    colorStart = "#4f46e5";
-    colorEnd = "#312e81";
   }
 
   const customMarkerIcon = new L.DivIcon({
@@ -256,45 +284,25 @@ function SelectedFeatureMarker({
 
                   <div className="text-right flex flex-col items-end">
                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1.5">
-                      Status Area
+                      Cluster Area
                     </p>
                     {(() => {
-                      const cluster = feature.data.cluster || "";
-                      let clusterStyle =
-                        "bg-slate-100 text-slate-700 border-slate-200";
-                      let indicator = "bg-slate-400";
-
-                      if (cluster.toLowerCase().includes("hijau")) {
-                        clusterStyle =
-                          "bg-emerald-50 text-emerald-700 border-emerald-200";
-                        indicator = "bg-emerald-500";
-                      } else if (cluster.toLowerCase().includes("kuning")) {
-                        clusterStyle =
-                          "bg-amber-50 text-amber-700 border-amber-200";
-                        indicator = "bg-amber-500";
-                      } else if (cluster.toLowerCase().includes("merah")) {
-                        clusterStyle =
-                          "bg-rose-50 text-rose-700 border-rose-200";
-                        indicator = "bg-rose-500";
-                      }
-
-                      const clusterText = cluster
-                        ? cluster.split(" (")[0]
-                        : "-";
+                      const cluster = getClusterStyles(feature.data.cluster);
+                      const rawCluster = feature.data.cluster || "";
                       const subText =
-                        cluster && cluster.includes("(")
-                          ? cluster.split("(")[1].replace(")", "")
+                        rawCluster && rawCluster.includes("(")
+                          ? rawCluster.split("(")[1].replace(")", "")
                           : "";
 
                       return (
                         <div className="flex flex-col items-end gap-1">
                           <div
-                            className={`px-2 py-1 rounded-md border text-[11px] font-bold flex items-center gap-1.5 ${clusterStyle}`}
+                            className={`px-2 py-1 rounded-md border text-[11px] font-bold flex items-center gap-1.5 ${cluster.chip}`}
                           >
                             <span
-                              className={`w-1.5 h-1.5 rounded-full ${indicator} ${cluster ? "animate-pulse" : ""}`}
+                              className={`w-1.5 h-1.5 rounded-full ${cluster.dot} ${feature.data.cluster ? "animate-pulse" : ""}`}
                             ></span>
-                            {clusterText}
+                            {cluster.label}
                           </div>
                           {subText && (
                             <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">
@@ -384,7 +392,7 @@ function SelectedFeatureMarker({
                       return (
                         <div
                           key={stat.label}
-                        className="flex items-baseline justify-between gap-3 border-b border-slate-200/70 pb-1 last:border-b-0 [&:nth-last-child(2)]:border-b-0"
+                          className="flex items-baseline justify-between gap-3 border-b border-slate-200/70 pb-1 last:border-b-0 [&:nth-last-child(2)]:border-b-0"
                         >
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                             {stat.label}
@@ -433,45 +441,25 @@ function SelectedFeatureMarker({
 
                   <div className="text-right flex flex-col items-end">
                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1.5">
-                      Status Area
+                      Cluster Area
                     </p>
                     {(() => {
-                      const cluster = feature.data.cluster || "";
-                      let clusterStyle =
-                        "bg-slate-100 text-slate-700 border-slate-200";
-                      let indicator = "bg-slate-400";
-
-                      if (cluster.toLowerCase().includes("hijau")) {
-                        clusterStyle =
-                          "bg-emerald-50 text-emerald-700 border-emerald-200";
-                        indicator = "bg-emerald-500";
-                      } else if (cluster.toLowerCase().includes("kuning")) {
-                        clusterStyle =
-                          "bg-amber-50 text-amber-700 border-amber-200";
-                        indicator = "bg-amber-500";
-                      } else if (cluster.toLowerCase().includes("merah")) {
-                        clusterStyle =
-                          "bg-rose-50 text-rose-700 border-rose-200";
-                        indicator = "bg-rose-500";
-                      }
-
-                      const clusterText = cluster
-                        ? cluster.split(" (")[0]
-                        : "-";
+                      const cluster = getClusterStyles(feature.data.cluster);
+                      const rawCluster = feature.data.cluster || "";
                       const subText =
-                        cluster && cluster.includes("(")
-                          ? cluster.split("(")[1].replace(")", "")
+                        rawCluster && rawCluster.includes("(")
+                          ? rawCluster.split("(")[1].replace(")", "")
                           : "";
 
                       return (
                         <div className="flex flex-col items-end gap-1">
                           <div
-                            className={`px-2 py-1 rounded-md border text-[11px] font-bold flex items-center gap-1.5 ${clusterStyle}`}
+                            className={`px-2 py-1 rounded-md border text-[11px] font-bold flex items-center gap-1.5 ${cluster.chip}`}
                           >
                             <span
-                              className={`w-1.5 h-1.5 rounded-full ${indicator} ${cluster ? "animate-pulse" : ""}`}
+                              className={`w-1.5 h-1.5 rounded-full ${cluster.dot} ${feature.data.cluster ? "animate-pulse" : ""}`}
                             ></span>
-                            {clusterText}
+                            {cluster.label}
                           </div>
                           {subText && (
                             <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">
@@ -499,9 +487,7 @@ function SelectedFeatureMarker({
                 <div className="rounded-xl border border-slate-100 bg-slate-50/70">
                   <button
                     type="button"
-                    onClick={() =>
-                      setShowFase2NdviStats((current) => !current)
-                    }
+                    onClick={() => setShowFase2NdviStats((current) => !current)}
                     className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-emerald-50/60"
                     aria-expanded={showFase2NdviStats}
                   >
@@ -519,7 +505,11 @@ function SelectedFeatureMarker({
                   {showFase2NdviStats && (
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-slate-100 px-3 pb-2 pt-1.5">
                       {[
-                        { label: "Mean", value: feature.data.mean, tone: "ndvi" },
+                        {
+                          label: "Mean",
+                          value: feature.data.mean,
+                          tone: "ndvi",
+                        },
                         {
                           label: "Median",
                           value: feature.data.median,
@@ -666,6 +656,209 @@ function SelectedFeatureMarker({
             </div>
           )}
 
+          {feature.mode === "inspection" && (
+            <div className="mb-3 mt-1">
+              <div className="mb-4 flex items-center justify-between gap-3 pr-10">
+                <div className="flex items-center gap-2 text-sky-700 font-bold uppercase tracking-widest text-[10px]">
+                  <div className="bg-sky-100/80 p-1.5 rounded-md shadow-sm">
+                    <MapPinned className="w-3.5 h-3.5 text-sky-700" />
+                  </div>
+                  Titik Inspeksi
+                </div>
+                <span className="flex h-7 shrink-0 items-center rounded-lg bg-sky-800 px-2.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
+                  {feature.id}
+                </span>
+              </div>
+
+              {(() => {
+                const cluster = getClusterStyles(feature.data.cluster);
+
+                return (
+                  <div className="rounded-xl border border-sky-100 bg-sky-50/40 px-3 py-2.5 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.1)]">
+                    <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      Cluster
+                    </p>
+                    <div
+                      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold ${cluster.chip}`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${cluster.dot}`}
+                      />
+                      {cluster.label}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {(() => {
+                const sensorReadings: MapSensorReading[] = Array.isArray(
+                  feature.data?.raw?.sensorReadings,
+                )
+                  ? feature.data.raw.sensorReadings
+                  : [];
+                const safeSensorIndex =
+                  sensorReadings.length === 0
+                    ? 0
+                    : Math.min(sensorHistoryIndex, sensorReadings.length - 1);
+                const activeSensor = sensorReadings[safeSensorIndex] ?? null;
+                const canShowHistoryNav = sensorReadings.length > 1;
+
+                return (
+                  <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50/70">
+                    <div className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left">
+                      <span>
+                        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-700">
+                          <ThermometerSun className="h-3.5 w-3.5" />
+                          Sensor Lingkungan
+                        </span>
+                        <span className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                          {canShowHistoryNav && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSensorHistoryIndex((current) =>
+                                  Math.min(
+                                    current + 1,
+                                    sensorReadings.length - 1,
+                                  ),
+                                )
+                              }
+                              disabled={
+                                safeSensorIndex >= sensorReadings.length - 1
+                              }
+                              className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+                              aria-label="Sensor lebih lama"
+                            >
+                              <ChevronLeft className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          <span>
+                            {formatSensorRecordedAt(
+                              activeSensor?.recordedAt ??
+                                feature.data.recordedAt,
+                            )}
+                          </span>
+                          {canShowHistoryNav && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSensorHistoryIndex((current) =>
+                                    Math.max(current - 1, 0),
+                                  )
+                                }
+                                disabled={safeSensorIndex === 0}
+                                className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+                                aria-label="Sensor lebih baru"
+                              >
+                                <ChevronRight className="h-3.5 w-3.5" />
+                              </button>
+                              <span className="rounded-md bg-white px-1.5 py-0.5 text-[9px] font-black text-slate-500">
+                                {safeSensorIndex + 1}/{sensorReadings.length}
+                              </span>
+                            </>
+                          )}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            activeSensor &&
+                            onOpenSensorModal?.(feature, activeSensor)
+                          }
+                          disabled={!activeSensor?.readingId}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-200 bg-white text-sky-700 shadow-sm transition hover:border-sky-300 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-35"
+                          aria-label="Edit sensor"
+                        >
+                          <Pencil className="h-3.5 w-3.5 stroke-[2.5px]" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenSensorModal?.(feature)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-200 bg-white text-sky-700 shadow-sm transition hover:border-sky-300 hover:bg-sky-50"
+                          aria-label="Catat sensor"
+                        >
+                          <Plus className="h-3.5 w-3.5 stroke-[3px]" />
+                        </button>
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-slate-100 px-3 pb-2 pt-1.5">
+                      {[
+                        {
+                          label: "Suhu",
+                          value: activeSensor
+                            ? `${formatSensorNumber(activeSensor.temperatureC, 1)}°C`
+                            : feature.data.temp
+                              ? `${feature.data.temp}°C`
+                              : "-",
+                          color: "text-rose-700",
+                        },
+                        {
+                          label: "Humidity",
+                          value: activeSensor
+                            ? `${formatSensorNumber(activeSensor.humidityPct, 1)}%`
+                            : feature.data.humidity || "-",
+                          color: "text-blue-700",
+                        },
+                        {
+                          label: "CO2",
+                          value: activeSensor
+                            ? `${formatSensorNumber(activeSensor.co2Ppm, 1)} ppm`
+                            : feature.data.co2
+                              ? `${feature.data.co2} ppm`
+                              : "-",
+                          color: "text-emerald-700",
+                        },
+                        {
+                          label: "NH3",
+                          value: activeSensor
+                            ? `${formatSensorNumber(activeSensor.nh3Ppm, 3)} ppm`
+                            : feature.data.nh3
+                              ? `${feature.data.nh3} ppm`
+                              : "-",
+                          color: "text-violet-700",
+                        },
+                        {
+                          label: "CO",
+                          value: activeSensor
+                            ? `${formatSensorNumber(activeSensor.coPpm, 3)} ppm`
+                            : feature.data.co
+                              ? `${feature.data.co} ppm`
+                              : "-",
+                          color: "text-slate-700",
+                        },
+                        {
+                          label: "NO2",
+                          value: activeSensor
+                            ? `${formatSensorNumber(activeSensor.no2Ppm, 3)} ppm`
+                            : feature.data.no2
+                              ? `${feature.data.no2} ppm`
+                              : "-",
+                          color: "text-cyan-700",
+                        },
+                      ].map((stat) => (
+                        <div
+                          key={stat.label}
+                          className="flex items-baseline justify-between gap-3 border-b border-slate-200/70 pb-1 last:border-b-0 [&:nth-last-child(2)]:border-b-0"
+                        >
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            {stat.label}
+                          </span>
+                          <span
+                            className={`text-[12px] font-black tabular-nums ${stat.color}`}
+                          >
+                            {stat.value}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
           {feature.mode === "fase2-hama" && (
             <div className="mb-2 mt-1">
               <div className="mb-3 flex items-center justify-between gap-3 pr-10">
@@ -704,7 +897,10 @@ function SelectedFeatureMarker({
                 let dotStyle = "bg-slate-400";
                 let levelText = feature.data.tingkat || "-";
 
-                if (level.includes("tinggi") || status.toLowerCase().includes("kritis")) {
+                if (
+                  level.includes("tinggi") ||
+                  status.toLowerCase().includes("kritis")
+                ) {
                   cardStyle = "border-rose-100 bg-rose-50/40";
                   statusStyle = "text-rose-900";
                   chipStyle = "bg-rose-50 text-rose-700 border-rose-200";
@@ -717,18 +913,23 @@ function SelectedFeatureMarker({
                 } else if (level.includes("rendah")) {
                   cardStyle = "border-emerald-100 bg-emerald-50/40";
                   statusStyle = "text-emerald-900";
-                  chipStyle = "bg-emerald-50 text-emerald-700 border-emerald-200";
+                  chipStyle =
+                    "bg-emerald-50 text-emerald-700 border-emerald-200";
                   dotStyle = "bg-emerald-500";
                 }
 
                 return (
-                  <div className={`mb-2 rounded-xl border px-3 py-2.5 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.1)] ${cardStyle}`}>
+                  <div
+                    className={`mb-2 rounded-xl border px-3 py-2.5 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.1)] ${cardStyle}`}
+                  >
                     <div className="mb-2 flex items-end justify-between gap-3">
                       <div className="text-left">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                           Status Hama
                         </p>
-                        <div className={`mt-0.5 text-[25px] font-black leading-none tracking-tighter ${statusStyle}`}>
+                        <div
+                          className={`mt-0.5 text-[25px] font-black leading-none tracking-tighter ${statusStyle}`}
+                        >
                           {feature.data.status || "-"}
                         </div>
                       </div>
@@ -739,7 +940,9 @@ function SelectedFeatureMarker({
                         <div
                           className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold ${chipStyle}`}
                         >
-                          <span className={`h-1.5 w-1.5 rounded-full ${dotStyle}`} />
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${dotStyle}`}
+                          />
                           {levelText}
                         </div>
                       </div>
@@ -779,7 +982,9 @@ function SelectedFeatureMarker({
             </div>
           )}
 
-          <div className={`h-[1px] w-full bg-gray-200 ${feature.mode === "fase2-hama" ? "mb-2" : "mb-3"}`} />
+          <div
+            className={`h-[1px] w-full bg-gray-200 ${feature.mode === "fase2-hama" ? "mb-2" : "mb-3"}`}
+          />
 
           {/* Location Info */}
           <div className={feature.mode === "fase2-hama" ? "mb-3" : "mb-4"}>
@@ -794,7 +999,9 @@ function SelectedFeatureMarker({
             </p>
           </div>
 
-          <div className={`h-[1px] w-full bg-gray-200 ${feature.mode === "fase2-hama" ? "mb-2" : "mb-3"}`} />
+          <div
+            className={`h-[1px] w-full bg-gray-200 ${feature.mode === "fase2-hama" ? "mb-2" : "mb-3"}`}
+          />
 
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col">
@@ -1112,7 +1319,7 @@ function LocateUserButton() {
 }
 
 type MapType = "default" | "satellite" | "terrain";
-type OverlayType = "rgb" | "ndvi" | "fase1" | "fase2" | "hama";
+type OverlayType = "rgb" | "ndvi" | "fase1" | "inspection" | "fase2" | "hama";
 
 function CustomLayerControl({
   baseLayer,
@@ -1186,7 +1393,7 @@ function CustomLayerControl({
                   </div>
                 </div>
                 <span
-                  className={`text-[11px] font-medium ${baseLayer === type.id ? "text-emerald-700" : "text-gray-600"}`}
+                  className={`text-[11px] font-semibold ${baseLayer === type.id ? "text-emerald-700" : "text-gray-500"}`}
                 >
                   {type.label}
                 </span>
@@ -1261,6 +1468,13 @@ function CustomLayerControl({
                 icon: Sprout,
               },
               {
+                id: "inspection",
+                label: "Inspection",
+                bgClass:
+                  "bg-gradient-to-br from-sky-50 to-sky-100 text-sky-600",
+                icon: MapPinned,
+              },
+              {
                 id: "fase2",
                 label: "Fase 2",
                 bgClass:
@@ -1306,41 +1520,99 @@ function CustomLayerControl({
   );
 }
 
-type PhaseLayer = "fase1" | "fase2" | "hama";
+type PhaseLayer = "fase1" | "inspection" | "fase2" | "hama";
 type SheetState = "collapsed" | "expanded";
+type PanelSortKey = "mean" | "cluster";
+type PanelSortDirection = "asc" | "desc";
+
+function panelNumericValue(value: string | undefined) {
+  return Number(String(value ?? "").replace("%", "")) || 0;
+}
 
 function getClusterStyles(cluster?: string) {
   const normalized = (cluster || "").toLowerCase();
+  const label = cluster?.trim() || "-";
 
-  if (normalized.includes("hijau")) {
+  if (normalized.includes("non-tanaman") || normalized.includes("non tanaman") || normalized.includes("non-plant")) {
     return {
-      label: "Hijau",
+      label: "Non-Tanaman",
+      chip: "bg-slate-50 text-slate-600 border-slate-200",
+      dot: "bg-slate-400",
+    };
+  }
+
+  if (normalized.includes("sehat") || normalized.includes("hijau") || normalized.includes("green")) {
+    return {
+      label: normalized.includes("sehat") ? label : "Hijau",
       chip: "bg-emerald-50 text-emerald-700 border-emerald-200",
       dot: "bg-emerald-500",
     };
   }
 
-  if (normalized.includes("kuning")) {
+  if (normalized.includes("cukup")) {
     return {
-      label: "Kuning",
+      label,
+      chip: "bg-lime-50 text-lime-700 border-lime-200",
+      dot: "bg-lime-500",
+    };
+  }
+
+  if (normalized.includes("sedang") || normalized.includes("kuning") || normalized.includes("yellow")) {
+    return {
+      label: normalized.includes("sedang") ? label : "Kuning",
       chip: "bg-amber-50 text-amber-700 border-amber-200",
       dot: "bg-amber-500",
     };
   }
 
-  if (normalized.includes("merah")) {
+  if (normalized.includes("stres") || normalized.includes("stress")) {
     return {
-      label: "Merah",
+      label,
+      chip: "bg-orange-50 text-orange-700 border-orange-200",
+      dot: "bg-orange-500",
+    };
+  }
+
+  if (normalized.includes("kritis") || normalized.includes("merah") || normalized.includes("red")) {
+    return {
+      label: normalized.includes("kritis") ? label : "Merah",
       chip: "bg-rose-50 text-rose-700 border-rose-200",
       dot: "bg-rose-500",
     };
   }
 
   return {
-    label: "-",
+    label,
     chip: "bg-slate-50 text-slate-500 border-slate-200",
     dot: "bg-slate-300",
   };
+}
+
+function getClusterSortRank(label: string) {
+  const normalized = label.toLowerCase();
+
+  if (normalized.includes("non-tanaman") || normalized.includes("non tanaman")) return 0;
+  if (normalized.includes("kritis")) return 1;
+  if (normalized.includes("stres") || normalized.includes("stress")) return 2;
+  if (normalized.includes("sedang")) return 3;
+  if (normalized.includes("cukup")) return 4;
+  if (normalized.includes("sehat")) return 5;
+  if (normalized.includes("merah")) return 1;
+  if (normalized.includes("kuning")) return 3;
+  if (normalized.includes("hijau")) return 5;
+
+  return 99;
+}
+
+function compareClusterLabels(a: string, b: string) {
+  const aZone = a.match(/^zona\s+(\d+)$/i);
+  const bZone = b.match(/^zona\s+(\d+)$/i);
+
+  if (aZone && bZone) {
+    return Number(aZone[1]) - Number(bZone[1]);
+  }
+
+  return a.localeCompare(b, undefined, { numeric: true });
 }
 
 function getPhaseRows(
@@ -1349,11 +1621,15 @@ function getPhaseRows(
 ): PhaseTableRow[] {
   if (!mapData) return [];
   if (activePhase === "hama") return mapData.hama.map(toHamaTableRow);
+  if (activePhase === "inspection") {
+    return mapData.inspectionPoints.map(toInspectionTableRow);
+  }
   return mapData.grids.map(toNdviTableRow);
 }
 
 function getPhaseMode(activePhase: PhaseLayer) {
   if (activePhase === "fase1") return "fase1";
+  if (activePhase === "inspection") return "inspection";
   if (activePhase === "fase2") return "fase2-ndvi";
   return "fase2-hama";
 }
@@ -1423,13 +1699,19 @@ function LayerDataPanel({
     () =>
       activeOverlays.filter(
         (overlay): overlay is PhaseLayer =>
-          overlay === "fase1" || overlay === "fase2" || overlay === "hama",
+          overlay === "fase1" ||
+          overlay === "inspection" ||
+          overlay === "fase2" ||
+          overlay === "hama",
       ),
     [activeOverlays],
   );
   const [activePhase, setActivePhase] = useState<PhaseLayer>("fase1");
   const [query, setQuery] = useState("");
   const [clusterFilter, setClusterFilter] = useState("semua");
+  const [sortKey, setSortKey] = useState<PanelSortKey | null>(null);
+  const [sortDirection, setSortDirection] =
+    useState<PanelSortDirection>("desc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   const [sheetState, setSheetState] = useState<SheetState>("expanded");
@@ -1443,6 +1725,8 @@ function LayerDataPanel({
   useEffect(() => {
     setQuery("");
     setClusterFilter("semua");
+    setSortKey(null);
+    setSortDirection("desc");
     setPage(1);
   }, [activePhase]);
 
@@ -1450,17 +1734,51 @@ function LayerDataPanel({
     () => getPhaseRows(activePhase, mapData),
     [activePhase, mapData],
   );
+  const clusterOptions = useMemo(() => {
+    if (activePhase === "hama") {
+      return [
+        { value: "rendah", label: "Rendah" },
+        { value: "sedang", label: "Sedang" },
+        { value: "tinggi", label: "Tinggi" },
+      ];
+    }
+
+    const options = new Map<string, string>();
+
+    rows.forEach((row) => {
+      const label = getClusterStyles(row.cluster).label;
+      const value = label.toLowerCase();
+
+      if (label !== "-" && !options.has(value)) {
+        options.set(value, label);
+      }
+    });
+
+    return Array.from(options, ([value, label]) => ({ value, label })).sort(
+      (a, b) =>
+        getClusterSortRank(a.label) - getClusterSortRank(b.label) ||
+        compareClusterLabels(a.label, b.label),
+    );
+  }, [activePhase, rows]);
   const mode = getPhaseMode(activePhase);
   const selectedGrid =
     selectedFeature?.mode === mode ? selectedFeature.id : null;
   const phaseLabel =
-    activePhase === "fase1" ? "Fase 1" : activePhase === "fase2" ? "Fase 2" : "Hama";
+    activePhase === "fase1"
+      ? "Fase 1"
+      : activePhase === "inspection"
+        ? "Inspection"
+        : activePhase === "fase2"
+          ? "Fase 2"
+          : "Hama";
   const phaseDescription =
     activePhase === "fase1"
       ? "Data awal NDVI drone"
-      : activePhase === "fase2"
-        ? "Analitik NDVI & sensor"
-        : "Indikasi hama & rekomendasi";
+      : activePhase === "inspection"
+        ? "Titik cek lapangan"
+        : activePhase === "fase2"
+          ? "Analitik NDVI & sensor"
+          : "Indikasi hama & rekomendasi";
   const normalizedQuery = normalizeSearchText(query);
   const filteredRows = rows.filter((row) => {
     const rowData = row;
@@ -1482,10 +1800,16 @@ function LayerDataPanel({
       rowData.jenis,
       rowData.area,
       rowData.rekomendasi,
+      rowData.representedGrids,
+      rowData.sensorStatus,
       coordinates?.[1],
       coordinates?.[0],
-      activePhase === "fase2" ? rowData.co2 : "",
-      activePhase === "fase2" ? rowData.temp : "",
+      activePhase === "fase2" || activePhase === "inspection"
+        ? rowData.co2
+        : "",
+      activePhase === "fase2" || activePhase === "inspection"
+        ? rowData.temp
+        : "",
     ]
       .filter(Boolean)
       .join(" ")
@@ -1496,6 +1820,31 @@ function LayerDataPanel({
         normalizeSearchText(searchableText).includes(normalizedQuery)) &&
       (clusterFilter === "semua" || cluster.toLowerCase() === clusterFilter)
     );
+  }).sort((a, b) => {
+    if (!sortKey) {
+      return 0;
+    }
+
+    let sortValue = 0;
+
+    if (sortKey === "mean") {
+      sortValue = panelNumericValue(a.mean) - panelNumericValue(b.mean);
+    } else if (sortKey === "cluster") {
+      const aCluster =
+        activePhase === "hama"
+          ? getHamaRiskStyles(a.tingkat, a.status).label
+          : getClusterStyles(a.cluster).label;
+      const bCluster =
+        activePhase === "hama"
+          ? getHamaRiskStyles(b.tingkat, b.status).label
+          : getClusterStyles(b.cluster).label;
+
+      sortValue =
+        getClusterSortRank(aCluster) - getClusterSortRank(bCluster) ||
+        compareClusterLabels(aCluster, bCluster);
+    }
+
+    return sortDirection === "asc" ? sortValue : -sortValue;
   });
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -1505,31 +1854,74 @@ function LayerDataPanel({
   );
   const isTableLoading = Boolean(isMapDataLoading && selectedLahan);
 
-  const handleSelectGrid = (row: (typeof rows)[number]) => {
-    onSelectFeature({
-      id: row.grid,
-      mode,
-      coordinates: row.coordinates,
-      data: row,
-    });
+	  const handleSelectGrid = (row: (typeof rows)[number]) => {
+	    onSelectFeature({
+	      id: row.grid,
+	      mode,
+	      coordinates: row.coordinates,
+	      data: row,
+	    });
+
+	    if (window.matchMedia("(max-width: 639px)").matches) {
+	      setSheetState("collapsed");
+	    }
+	  };
+
+  const handleSort = (key: PanelSortKey) => {
+    if (sortKey === key) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDirection("desc");
+    }
+
+    setPage(1);
   };
+
+  const renderSortIcon = (key: PanelSortKey) => {
+    if (sortKey !== key) {
+      return <ArrowUpDown className="h-3 w-3 text-slate-400" />;
+    }
+
+    return sortDirection === "asc" ? (
+      <ArrowUp className="h-3 w-3 text-emerald-700" />
+    ) : (
+      <ArrowDown className="h-3 w-3 text-emerald-700" />
+    );
+  };
+
+  const renderSortableHeader = (key: PanelSortKey, label: string) => (
+    <button
+      type="button"
+      onClick={() => handleSort(key)}
+      className="mx-auto inline-flex min-w-0 items-center justify-center gap-1 font-bold uppercase tracking-wider text-slate-500 transition hover:text-emerald-700"
+      title={`Sort ${label}`}
+    >
+      <span className="truncate">{label}</span>
+      {renderSortIcon(key)}
+    </button>
+  );
 
   const handleSelectLahan = () => {
     if (!mapData) {
       return;
     }
 
-    onSelectFeature({
-      id: mapData.lahan.fieldCode,
-      mode: "default",
-      coordinates: [mapData.lahan.center.lat, mapData.lahan.center.lng],
+	    onSelectFeature({
+	      id: mapData.lahan.fieldCode,
+	      mode: "default",
+	      coordinates: [mapData.lahan.center.lat, mapData.lahan.center.lng],
       data: {
         type: "lahan",
         ...mapData.lahan,
-        center: [mapData.lahan.center.lat, mapData.lahan.center.lng],
-      },
-    });
-  };
+	        center: [mapData.lahan.center.lat, mapData.lahan.center.lng],
+	      },
+	    });
+
+	    if (window.matchMedia("(max-width: 639px)").matches) {
+	      setSheetState("collapsed");
+	    }
+	  };
 
   if (availablePhases.length === 0) {
     return null;
@@ -1563,7 +1955,13 @@ function LayerDataPanel({
             <MapPinned className="h-4 w-4" />
           </div>
           <div className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-700">
-            {activePhase === "fase1" ? "F1" : activePhase === "fase2" ? "F2" : "H"}
+            {activePhase === "fase1"
+              ? "F1"
+              : activePhase === "inspection"
+                ? "IN"
+                : activePhase === "fase2"
+                  ? "F2"
+                  : "H"}
           </div>
         </div>
       )}
@@ -1626,7 +2024,13 @@ function LayerDataPanel({
                         : "text-slate-500 hover:text-slate-700"
                     }`}
                   >
-                    {phase === "fase1" ? "F1" : phase === "fase2" ? "F2" : "H"}
+                    {phase === "fase1"
+                      ? "F1"
+                      : phase === "inspection"
+                        ? "IN"
+                        : phase === "fase2"
+                          ? "F2"
+                          : "H"}
                   </button>
                 ))}
               </div>
@@ -1690,7 +2094,9 @@ function LayerDataPanel({
                 setQuery(event.target.value);
                 setPage(1);
               }}
-              placeholder="Cari grid..."
+              placeholder={
+                activePhase === "inspection" ? "Cari titik..." : "Cari grid..."
+              }
               className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-[13px] font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-900/20"
             />
           </div>
@@ -1703,17 +2109,7 @@ function LayerDataPanel({
             }}
             options={[
               { value: "semua", label: "Semua" },
-              ...(activePhase === "hama"
-                ? [
-                    { value: "rendah", label: "Rendah" },
-                    { value: "sedang", label: "Sedang" },
-                    { value: "tinggi", label: "Tinggi" },
-                  ]
-                : [
-                    { value: "hijau", label: "Hijau" },
-                    { value: "kuning", label: "Kuning" },
-                    { value: "merah", label: "Merah" },
-                  ]),
+              ...clusterOptions,
             ]}
           />
         </div>
@@ -1728,9 +2124,11 @@ function LayerDataPanel({
           className={`sticky top-0 z-10 grid border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 ${
             activePhase === "hama"
               ? "grid-cols-[58px_1fr_66px_42px]"
-              : activePhase === "fase1"
-              ? "grid-cols-[74px_58px_1fr_42px]"
-              : "grid-cols-[56px_54px_54px_1fr_38px]"
+              : activePhase === "inspection"
+                ? "grid-cols-[58px_1fr_62px_42px]"
+                : activePhase === "fase1"
+                  ? "grid-cols-[74px_58px_1fr_42px]"
+                  : "grid-cols-[56px_54px_54px_1fr_38px]"
           }`}
         >
           {activePhase === "hama" ? (
@@ -1740,19 +2138,26 @@ function LayerDataPanel({
               <span className="text-center">Risiko</span>
               <span className="text-center">Aksi</span>
             </>
+          ) : activePhase === "inspection" ? (
+            <>
+              <span className="text-center">Point</span>
+              {renderSortableHeader("cluster", "Cluster")}
+              <span className="text-center">Grid</span>
+              <span className="text-center">Aksi</span>
+            </>
           ) : activePhase === "fase1" ? (
             <>
               <span className="text-center">Grid Area</span>
-              <span className="text-center">NDVI</span>
-              <span className="text-center">Cluster</span>
+              {renderSortableHeader("mean", "NDVI")}
+              {renderSortableHeader("cluster", "Cluster")}
               <span className="text-center">Aksi</span>
             </>
           ) : (
             <>
               <span className="text-center">Grid</span>
-              <span className="text-center">NDVI</span>
+              {renderSortableHeader("mean", "NDVI")}
               <span className="text-center">CO2</span>
-              <span className="text-center">Cluster</span>
+              {renderSortableHeader("cluster", "Cluster")}
               <span className="text-center">Aksi</span>
             </>
           )}
@@ -1770,9 +2175,11 @@ function LayerDataPanel({
                   className={`grid w-full items-center gap-3 rounded-xl bg-white py-2 ${
                     activePhase === "hama"
                       ? "grid-cols-[58px_1fr_66px_42px]"
-                      : activePhase === "fase1"
-                      ? "grid-cols-[74px_58px_1fr_42px]"
-                      : "grid-cols-[56px_54px_54px_1fr_38px]"
+                      : activePhase === "inspection"
+                        ? "grid-cols-[58px_1fr_62px_42px]"
+                        : activePhase === "fase1"
+                          ? "grid-cols-[74px_58px_1fr_42px]"
+                          : "grid-cols-[56px_54px_54px_1fr_38px]"
                   }`}
                 >
                   <span className="h-5 animate-pulse rounded-md bg-slate-100" />
@@ -1788,113 +2195,141 @@ function LayerDataPanel({
           </div>
         ) : (
           pagedRows.map((row) => {
-          const rowData = row;
-          const cluster =
-            activePhase === "hama"
-              ? getHamaRiskStyles(rowData.tingkat, rowData.status)
-              : getClusterStyles(rowData.cluster);
-          const isSelected = selectedGrid === row.grid;
+            const rowData = row;
+            const cluster =
+              activePhase === "hama"
+                ? getHamaRiskStyles(rowData.tingkat, rowData.status)
+                : getClusterStyles(rowData.cluster);
+            const isSelected = selectedGrid === row.grid;
 
-          return (
-            <div
-              key={`${activePhase}-${row.grid}`}
-              className={`grid w-full items-center gap-0 border-b border-slate-100 px-4 py-3 text-center transition-colors last:border-b-0 ${
-                activePhase === "hama"
-                  ? "grid-cols-[58px_1fr_66px_42px]"
-                  : activePhase === "fase1"
-                  ? "grid-cols-[74px_58px_1fr_42px]"
-                  : "grid-cols-[56px_54px_54px_1fr_38px]"
-              } ${
-                isSelected ? "bg-emerald-50/80" : "bg-white hover:bg-slate-50"
-              }`}
-            >
-              <span className="text-center font-black text-[13px] text-slate-900">
-                {row.grid}
-              </span>
-              {activePhase === "hama" ? (
-                <>
-                  <span className="min-w-0 px-1 text-center text-[12px] font-black text-slate-800">
-                    {rowData.status || "-"}
-                  </span>
-                  <span
-                    className={`mx-auto inline-flex w-fit items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-bold ${cluster.chip}`}
-                  >
+            return (
+              <div
+                key={`${activePhase}-${row.grid}`}
+                className={`grid w-full items-center gap-0 border-b border-slate-100 px-4 py-3 text-center transition-colors last:border-b-0 ${
+                  activePhase === "hama"
+                    ? "grid-cols-[58px_1fr_66px_42px]"
+                    : activePhase === "inspection"
+                      ? "grid-cols-[58px_1fr_62px_42px]"
+                      : activePhase === "fase1"
+                        ? "grid-cols-[74px_58px_1fr_42px]"
+                        : "grid-cols-[56px_54px_54px_1fr_38px]"
+                } ${
+                  isSelected ? "bg-emerald-50/80" : "bg-white hover:bg-slate-50"
+                }`}
+              >
+                <span className="text-center font-black text-[13px] text-slate-900">
+                  {row.grid}
+                </span>
+                {activePhase === "hama" ? (
+                  <>
+                    <span className="min-w-0 px-1 text-center text-[12px] font-black text-slate-800">
+                      {rowData.status || "-"}
+                    </span>
                     <span
-                      className={`h-1.5 w-1.5 rounded-full ${cluster.dot}`}
-                    />
-                    {cluster.label}
-                  </span>
-                  <span className="flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectGrid(row)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-700/30 bg-white text-rose-700 shadow-[0_6px_14px_rgba(15,23,42,0.12)] transition hover:bg-rose-50"
-                      title="Lihat lokasi hama"
+                      className={`mx-auto inline-flex w-fit items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-bold ${cluster.chip}`}
                     >
-                      <Bug className="h-4 w-4" />
-                    </button>
-                  </span>
-                </>
-              ) : activePhase === "fase1" ? (
-                <>
-                  <span className="text-center text-[13px] font-black text-slate-800">
-                    {rowData.mean}
-                  </span>
-                  <span
-                    className={`mx-auto inline-flex w-fit items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-bold ${cluster.chip}`}
-                  >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${cluster.dot}`}
+                      />
+                      {cluster.label}
+                    </span>
+                    <span className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectGrid(row)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-700/30 bg-white text-rose-700 shadow-[0_6px_14px_rgba(15,23,42,0.12)] transition hover:bg-rose-50"
+                        title="Lihat lokasi hama"
+                      >
+                        <Bug className="h-4 w-4" />
+                      </button>
+                    </span>
+                  </>
+                ) : activePhase === "inspection" ? (
+                  <>
                     <span
-                      className={`h-1.5 w-1.5 rounded-full ${cluster.dot}`}
-                    />
-                    {cluster.label}
-                  </span>
-                  <span className="flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectGrid(row)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-700/40 bg-white text-emerald-800 shadow-[0_6px_14px_rgba(15,23,42,0.12)] transition hover:bg-emerald-900/5"
-                      title="Lihat lokasi grid"
+                      className={`mx-auto inline-flex w-fit items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-bold ${cluster.chip}`}
                     >
-                      <MapPin className="h-4 w-4" />
-                    </button>
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="text-center text-[13px] font-black text-slate-800">
-                    {rowData.mean}
-                  </span>
-                  <span className="text-center text-[13px] font-black text-slate-800">
-                    {rowData.co2}
-                  </span>
-                  <span
-                    className={`mx-auto inline-flex w-fit items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-bold ${cluster.chip}`}
-                  >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${cluster.dot}`}
+                      />
+                      {cluster.label}
+                    </span>
+                    <span className="text-center text-[13px] font-black text-slate-800">
+                      {rowData.representedCount || "0"}
+                    </span>
+                    <span className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectGrid(row)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-700/40 bg-white text-emerald-800 shadow-[0_6px_14px_rgba(15,23,42,0.12)] transition hover:bg-emerald-900/5"
+                        title="Lihat titik inspeksi"
+                      >
+                        <MapPin className="h-4 w-4" />
+                      </button>
+                    </span>
+                  </>
+                ) : activePhase === "fase1" ? (
+                  <>
+                    <span className="text-center text-[13px] font-black text-slate-800">
+                      {rowData.mean}
+                    </span>
                     <span
-                      className={`h-1.5 w-1.5 rounded-full ${cluster.dot}`}
-                    />
-                    {cluster.label}
-                  </span>
-                  <span className="flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => handleSelectGrid(row)}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-700/40 bg-white text-emerald-800 shadow-[0_6px_14px_rgba(15,23,42,0.12)] transition hover:bg-emerald-900/5"
-                      title="Lihat lokasi grid"
+                      className={`mx-auto inline-flex w-fit items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-bold ${cluster.chip}`}
                     >
-                      <MapPin className="h-4 w-4" />
-                    </button>
-                  </span>
-                </>
-              )}
-            </div>
-          );
-        })
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${cluster.dot}`}
+                      />
+                      {cluster.label}
+                    </span>
+                    <span className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectGrid(row)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-700/40 bg-white text-emerald-800 shadow-[0_6px_14px_rgba(15,23,42,0.12)] transition hover:bg-emerald-900/5"
+                        title="Lihat lokasi grid"
+                      >
+                        <MapPin className="h-4 w-4" />
+                      </button>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-center text-[13px] font-black text-slate-800">
+                      {rowData.mean}
+                    </span>
+                    <span className="text-center text-[13px] font-black text-slate-800">
+                      {rowData.co2}
+                    </span>
+                    <span
+                      className={`mx-auto inline-flex w-fit items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-bold ${cluster.chip}`}
+                    >
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${cluster.dot}`}
+                      />
+                      {cluster.label}
+                    </span>
+                    <span className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectGrid(row)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-700/40 bg-white text-emerald-800 shadow-[0_6px_14px_rgba(15,23,42,0.12)] transition hover:bg-emerald-900/5"
+                        title="Lihat lokasi grid"
+                      >
+                        <MapPin className="h-4 w-4" />
+                      </button>
+                    </span>
+                  </>
+                )}
+              </div>
+            );
+          })
         )}
         {!isTableLoading && filteredRows.length === 0 && (
           <div className="px-4 py-8 text-center">
             <p className="text-[13px] font-bold text-slate-700">
-              Grid tidak ditemukan
+              {activePhase === "inspection"
+                ? "Titik inspeksi tidak ditemukan"
+                : "Grid tidak ditemukan"}
             </p>
             <p className="mt-1 text-[12px] font-medium text-slate-400">
               Coba kata kunci lain.
@@ -2108,7 +2543,7 @@ function MapClickHandler({
 
                       <div className="text-right flex flex-col items-end">
                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1.5">
-                          Status Area
+                          Cluster Area
                         </p>
                         <div className="flex flex-col items-end gap-1">
                           <div className="px-2 py-1 rounded-md border text-[11px] font-bold flex items-center gap-1.5 bg-slate-50 text-slate-400 border-slate-200">
@@ -2203,7 +2638,7 @@ function MapClickHandler({
 
                       <div className="text-right flex flex-col items-end">
                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1.5">
-                          Status Area
+                          Cluster Area
                         </p>
                         <div className="flex flex-col items-end gap-1">
                           <div className="px-2 py-1 rounded-md border text-[11px] font-bold flex items-center gap-1.5 bg-slate-50 text-slate-400 border-slate-200">
@@ -2479,20 +2914,109 @@ function LahanImageOverlays({
 
   return (
     <>
-      {activeOverlays.includes("rgb") && rgbLayer && rgbBounds && (
-        rgbLayer.corners ? (
+      {activeOverlays.includes("rgb") &&
+        rgbLayer &&
+        rgbBounds &&
+        (rgbLayer.corners ? (
           <RotatedImageOverlay layer={rgbLayer} opacity={0.78} />
         ) : (
           <ImageOverlay url={rgbLayer.url} bounds={rgbBounds} opacity={0.78} />
-        )
-      )}
-      {activeOverlays.includes("ndvi") && ndviLayer && ndviBounds && (
-        ndviLayer.corners ? (
+        ))}
+      {activeOverlays.includes("ndvi") &&
+        ndviLayer &&
+        ndviBounds &&
+        (ndviLayer.corners ? (
           <RotatedImageOverlay layer={ndviLayer} opacity={0.74} />
         ) : (
-          <ImageOverlay url={ndviLayer.url} bounds={ndviBounds} opacity={0.74} />
-        )
-      )}
+          <ImageOverlay
+            url={ndviLayer.url}
+            bounds={ndviBounds}
+            opacity={0.74}
+          />
+        ))}
+    </>
+  );
+}
+
+function getInspectionMarkerTone(clusterLabel?: string | null) {
+  if (clusterLabel === "merah") {
+    return { bg: "#e11d48", ring: "rgba(225,29,72,0.22)" };
+  }
+
+  if (clusterLabel === "kuning") {
+    return { bg: "#d97706", ring: "rgba(217,119,6,0.22)" };
+  }
+
+  return { bg: "#059669", ring: "rgba(5,150,105,0.22)" };
+}
+
+function InspectionPointMarkers({
+  mapData,
+  activeOverlays,
+  onSelectFeature,
+}: {
+  mapData?: LahanMapData | null;
+  activeOverlays: OverlayType[];
+  onSelectFeature: (feature: SelectedMapFeature) => void;
+}) {
+  const map = useMap();
+  const shouldRender =
+    Boolean(mapData) && activeOverlays.includes("inspection");
+
+  useEffect(() => {
+    if (!mapData || !shouldRender) {
+      return;
+    }
+
+    map.fitBounds(
+      [
+        [mapData.lahan.bounds.minLat, mapData.lahan.bounds.minLng],
+        [mapData.lahan.bounds.maxLat, mapData.lahan.bounds.maxLng],
+      ],
+      { padding: [40, 40], animate: true },
+    );
+  }, [map, mapData, shouldRender]);
+
+  if (!mapData || !activeOverlays.includes("inspection")) {
+    return null;
+  }
+
+  return (
+    <>
+      {mapData.inspectionPoints.map((point) => {
+        const tone = getInspectionMarkerTone(point.clusterLabel);
+        const row = toInspectionTableRow(point);
+        const icon = new L.DivIcon({
+          html: `<div class="relative flex h-11 w-11 items-center justify-center">
+            <div class="absolute h-11 w-11 rounded-full" style="background:${tone.ring}"></div>
+            <div class="relative flex h-8 w-8 items-center justify-center rounded-full border-2 border-white text-[11px] font-black text-white shadow-[0_8px_18px_rgba(15,23,42,0.28)]" style="background:${tone.bg}">
+              ${point.pointCode}
+            </div>
+          </div>`,
+          className: "",
+          iconSize: [44, 44],
+          iconAnchor: [22, 22],
+        });
+
+        return (
+          <Marker
+            key={`inspection-${point.pointCode}`}
+            position={[point.inspectionLat, point.inspectionLng]}
+            icon={icon}
+            eventHandlers={{
+              click: (event) => {
+                L.DomEvent.stopPropagation(event.originalEvent);
+                onSelectFeature({
+                  id: point.pointCode,
+                  mode: "inspection",
+                  coordinates: row.coordinates,
+                  data: row,
+                });
+              },
+            }}
+          />
+        );
+      })}
     </>
   );
 }
@@ -2500,10 +3024,12 @@ function LahanImageOverlays({
 function LahanGridRectangles({
   mapData,
   activeOverlays,
+  selectedFeature,
   onSelectFeature,
 }: {
   mapData?: LahanMapData | null;
   activeOverlays: OverlayType[];
+  selectedFeature?: SelectedMapFeature | null;
   onSelectFeature: (feature: SelectedMapFeature) => void;
 }) {
   const map = useMap();
@@ -2525,7 +3051,10 @@ function LahanGridRectangles({
     );
   }, [map, mapData, shouldRender]);
 
-  if (!mapData || (!activeOverlays.includes("fase1") && !activeOverlays.includes("fase2"))) {
+  if (
+    !mapData ||
+    (!activeOverlays.includes("fase1") && !activeOverlays.includes("fase2"))
+  ) {
     return null;
   }
 
@@ -2536,8 +3065,18 @@ function LahanGridRectangles({
   return (
     <>
       {mapData.grids.map((grid) => {
-        const style = getGridRectangleStyle(grid.ndvi?.clusterLabel);
+        const style = getGridRectangleStyle(
+          grid.ndvi?.clusterLabel,
+          grid.ndvi?.gridColor,
+          grid.ndvi?.isPlant,
+        );
         const row = toNdviTableRow(grid);
+        const isRepresentedBySelectedInspection =
+          selectedFeature?.mode === "inspection" &&
+          Array.isArray(selectedFeature.data?.raw?.representativeGridCodes) &&
+          selectedFeature.data.raw.representativeGridCodes.includes(
+            grid.gridCode,
+          );
 
         return (
           <Polygon
@@ -2550,10 +3089,14 @@ function LahanGridRectangles({
             ]}
             pathOptions={{
               color: style.color,
-              weight: 1,
-              opacity: 0.85,
+              weight: isRepresentedBySelectedInspection ? 3 : 1,
+              opacity: isRepresentedBySelectedInspection ? 1 : 0.85,
               fillColor: style.fillColor,
-              fillOpacity: hasImageOverlay ? 0.12 : 0.22,
+              fillOpacity: isRepresentedBySelectedInspection
+                ? 0.36
+                : hasImageOverlay
+                  ? 0.12
+                  : 0.22,
               bubblingMouseEvents: false,
             }}
             eventHandlers={{
@@ -2574,18 +3117,266 @@ function LahanGridRectangles({
   );
 }
 
+type SensorModalTarget = {
+  pointCode: string;
+  mode: "create" | "edit";
+  readingId?: string;
+  initialValues?: SensorFormValues;
+};
+
+type SensorFormValues = {
+  temperatureC: string;
+  humidityPct: string;
+  co2Ppm: string;
+  nh3Ppm: string;
+  coPpm: string;
+  no2Ppm: string;
+};
+
+const emptySensorForm: SensorFormValues = {
+  temperatureC: "",
+  humidityPct: "",
+  co2Ppm: "",
+  nh3Ppm: "",
+  coPpm: "",
+  no2Ppm: "",
+};
+
+function sensorReadingToFormValues(
+  reading: MapSensorReading,
+): SensorFormValues {
+  return {
+    temperatureC:
+      reading.temperatureC === null || reading.temperatureC === undefined
+        ? ""
+        : reading.temperatureC.toString(),
+    humidityPct:
+      reading.humidityPct === null || reading.humidityPct === undefined
+        ? ""
+        : reading.humidityPct.toString(),
+    co2Ppm:
+      reading.co2Ppm === null || reading.co2Ppm === undefined
+        ? ""
+        : reading.co2Ppm.toString(),
+    nh3Ppm:
+      reading.nh3Ppm === null || reading.nh3Ppm === undefined
+        ? ""
+        : reading.nh3Ppm.toString(),
+    coPpm:
+      reading.coPpm === null || reading.coPpm === undefined
+        ? ""
+        : reading.coPpm.toString(),
+    no2Ppm:
+      reading.no2Ppm === null || reading.no2Ppm === undefined
+        ? ""
+        : reading.no2Ppm.toString(),
+  };
+}
+
+function parseSensorNumber(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatSensorRecordedAt(value?: string | null) {
+  if (!value) {
+    return "Belum ada data";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Belum ada data";
+  }
+
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+    .format(date)
+    .replace(" pukul ", " ");
+}
+
+function formatSensorNumber(value: number | null | undefined, digits = 1) {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "-";
+  }
+
+  return Number(value.toFixed(digits)).toString();
+}
+
+function SensorReadingModal({
+  target,
+  isSaving,
+  error,
+  onClose,
+  onSubmit,
+  onDelete,
+}: {
+  target: SensorModalTarget | null;
+  isSaving: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSubmit: (values: SensorFormValues) => Promise<void>;
+  onDelete: () => void;
+}) {
+  const [values, setValues] = useState<SensorFormValues>(emptySensorForm);
+
+  useEffect(() => {
+    if (target) {
+      setValues(target.initialValues ?? emptySensorForm);
+    }
+  }, [target]);
+
+  if (!target) {
+    return null;
+  }
+
+  const fields: Array<{
+    key: keyof SensorFormValues;
+    label: string;
+    unit: string;
+    step: string;
+  }> = [
+    { key: "temperatureC", label: "Suhu", unit: "C", step: "0.1" },
+    { key: "humidityPct", label: "Humidity", unit: "%", step: "0.1" },
+    { key: "co2Ppm", label: "CO2", unit: "ppm", step: "0.1" },
+    { key: "nh3Ppm", label: "NH3", unit: "ppm", step: "0.001" },
+    { key: "coPpm", label: "CO", unit: "ppm", step: "0.001" },
+    { key: "no2Ppm", label: "NO2", unit: "ppm", step: "0.001" },
+  ];
+
+  const hasAnyValue = Object.values(values).some((value) => value.trim());
+  const isEditMode = target.mode === "edit";
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await onSubmit(values);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/40 px-4 py-6 backdrop-blur-[2px]">
+      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-sky-700">
+              {isEditMode ? "Edit Sensor" : "Catat Sensor"}
+            </p>
+            <h2 className="mt-1 text-lg font-black text-slate-950">
+              Titik {target.pointCode}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200"
+            aria-label="Tutup"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <form
+          onSubmit={handleSubmit}
+          className="max-h-[78vh] overflow-y-auto px-5 py-4"
+        >
+          <div className="grid grid-cols-2 gap-3">
+            {fields.map((field) => (
+              <label key={field.key} className="block">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  {field.label}
+                </span>
+                <div className="mt-1 flex h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 focus-within:border-sky-300 focus-within:bg-white">
+                  <input
+                    value={values[field.key]}
+                    onChange={(event) =>
+                      setValues((current) => ({
+                        ...current,
+                        [field.key]: event.target.value,
+                      }))
+                    }
+                    type="number"
+                    inputMode="decimal"
+                    step={field.step}
+                    className="min-w-0 flex-1 bg-transparent text-base font-bold text-slate-900 outline-none [appearance:textfield] sm:text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                  <span className="ml-2 text-[10px] font-bold uppercase text-slate-400">
+                    {field.unit}
+                  </span>
+                </div>
+              </label>
+            ))}
+          </div>
+
+          {error && (
+            <p className="mt-3 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-[12px] font-bold text-rose-700">
+              {error}
+            </p>
+          )}
+
+          <div className="mt-5 flex items-center justify-end gap-2">
+            {isEditMode && (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={isSaving}
+                className="mr-auto flex h-10 items-center gap-2 rounded-xl border border-rose-200 px-4 text-[12px] font-black uppercase tracking-wider text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                Hapus
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-10 rounded-xl px-4 text-[12px] font-black uppercase tracking-wider text-slate-500 transition hover:bg-slate-100"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving || !hasAnyValue}
+              className="flex h-10 items-center gap-2 rounded-xl bg-sky-700 px-4 text-[12px] font-black uppercase tracking-wider text-white shadow-[0_10px_22px_rgba(2,132,199,0.24)] transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+            >
+              {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+              Simpan
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function MapUI({
   selectedFeature,
   onCloseFeature,
 }: MapUIProps = {}) {
+  const queryClient = useQueryClient();
   const [baseLayer, setBaseLayer] = useState<MapType>("satellite");
   const [activeOverlays, setActiveOverlays] = useState<OverlayType[]>([]);
   const [selectedLahanId, setSelectedLahanId] = useState<string | null>(null);
   const [panelSelectedFeature, setPanelSelectedFeature] =
     useState<SelectedMapFeature | null>(null);
+  const [sensorModalTarget, setSensorModalTarget] =
+    useState<SensorModalTarget | null>(null);
+  const [sensorModalError, setSensorModalError] = useState<string | null>(null);
+  const [isSavingSensor, setIsSavingSensor] = useState(false);
+  const [showDeleteSensorConfirm, setShowDeleteSensorConfirm] = useState(false);
   const focusedFeature = panelSelectedFeature ?? selectedFeature;
   const shouldLoadMapData =
-    Boolean(selectedLahanId) && (activeOverlays.length > 0 || Boolean(focusedFeature));
+    Boolean(selectedLahanId) &&
+    (activeOverlays.length > 0 || Boolean(focusedFeature));
   const lahanQuery = useQuery({
     queryKey: ["lahan"],
     queryFn: fetchLahan,
@@ -2604,6 +3395,13 @@ export default function MapUI({
     rgb: mapDataQuery.data?.layers.rgb ?? undefined,
     ndvi: mapDataQuery.data?.layers.ndvi ?? undefined,
   };
+  const activeInspectionPointCode =
+    focusedFeature?.mode === "inspection"
+      ? focusedFeature.data?.raw && "pointCode" in focusedFeature.data.raw
+        ? focusedFeature.data.raw.pointCode
+        : focusedFeature.id
+      : null;
+  const activeCaptureId = mapDataQuery.data?.lahan.captureId ?? null;
 
   useEffect(() => {
     if (selectedLahanId || lahanOptions.length === 0) {
@@ -2611,7 +3409,9 @@ export default function MapUI({
     }
 
     const savedLahanId = window.localStorage.getItem("selectedLahanId");
-    const savedOption = lahanOptions.find((option) => option.id === savedLahanId);
+    const savedOption = lahanOptions.find(
+      (option) => option.id === savedLahanId,
+    );
     setSelectedLahanId((savedOption ?? lahanOptions[0]).id);
   }, [lahanOptions, selectedLahanId]);
 
@@ -2623,9 +3423,11 @@ export default function MapUI({
     const requiredOverlay =
       selectedFeature.mode === "fase1"
         ? "fase1"
-        : selectedFeature.mode === "fase2-hama"
-          ? "hama"
-          : "fase2";
+        : selectedFeature.mode === "inspection"
+          ? "inspection"
+          : selectedFeature.mode === "fase2-hama"
+            ? "hama"
+            : "fase2";
 
     setActiveOverlays((current) =>
       current.includes(requiredOverlay)
@@ -2642,14 +3444,102 @@ export default function MapUI({
     const requiredOverlay =
       panelSelectedFeature.mode === "fase1"
         ? "fase1"
-        : panelSelectedFeature.mode === "fase2-hama"
-          ? "hama"
-          : "fase2";
+        : panelSelectedFeature.mode === "inspection"
+          ? "inspection"
+          : panelSelectedFeature.mode === "fase2-hama"
+            ? "hama"
+            : "fase2";
 
     if (!activeOverlays.includes(requiredOverlay)) {
       setPanelSelectedFeature(null);
     }
   }, [activeOverlays, panelSelectedFeature]);
+
+  useEffect(() => {
+    if (
+      !selectedLahanId ||
+      !activeCaptureId ||
+      !activeInspectionPointCode ||
+      !canUseFirebaseLahanService()
+    ) {
+      return;
+    }
+
+    const unsubscribe = subscribeSensorReadings(
+      selectedLahanId,
+      activeCaptureId,
+      activeInspectionPointCode,
+      (readings) => {
+        const sensorReadings = readings
+          .map(toMapSensorReading)
+          .filter((reading): reading is MapSensorReading => Boolean(reading));
+        const latestSensor = sensorReadings[0] ?? null;
+        const queryKey = ["map-data", selectedLahanId] as const;
+        const currentMapData = queryClient.getQueryData<LahanMapData>(queryKey);
+        const currentPoint = currentMapData?.inspectionPoints.find(
+          (point) => point.pointCode === activeInspectionPointCode,
+        );
+
+        if (!currentPoint) {
+          return;
+        }
+
+        const updatedPoint: MapInspectionPoint = {
+          ...currentPoint,
+          latestSensor,
+          sensorReadings,
+        };
+
+        queryClient.setQueryData<LahanMapData>(queryKey, (current) => {
+          if (!current) {
+            return current;
+          }
+
+          const inspectionPoints = current.inspectionPoints.map((point) => {
+            if (point.pointCode !== activeInspectionPointCode) {
+              return point;
+            }
+
+            return updatedPoint;
+          });
+
+          const representedGridCodes = new Set(
+            updatedPoint.representativeGridCodes,
+          );
+          const grids = current.grids.map((grid) =>
+            representedGridCodes.has(grid.gridCode)
+              ? { ...grid, sensor: latestSensor }
+              : grid,
+          );
+
+          return {
+            ...current,
+            grids,
+            inspectionPoints,
+          };
+        });
+
+        const row = toInspectionTableRow(updatedPoint);
+
+        setPanelSelectedFeature({
+          id: updatedPoint.pointCode,
+          mode: "inspection",
+          coordinates: row.coordinates,
+          data: row,
+        });
+      },
+      (error) => {
+        console.error("Sensor realtime subscription error:", error);
+      },
+    );
+
+    return () => unsubscribe();
+  }, [
+    activeCaptureId,
+    activeInspectionPointCode,
+    queryClient,
+    selectedLahanId,
+  ]);
 
   const toggleOverlay = (id: OverlayType) => {
     setActiveOverlays((prev) => {
@@ -2663,6 +3553,128 @@ export default function MapUI({
     setSelectedLahanId(option.id);
     window.localStorage.setItem("selectedLahanId", option.id);
     setPanelSelectedFeature(null);
+    setSensorModalTarget(null);
+  };
+
+  const handleOpenSensorModal = (
+    feature: SelectedMapFeature,
+    reading?: MapSensorReading,
+  ) => {
+    const point = feature.data?.raw;
+
+    setSensorModalError(null);
+    setShowDeleteSensorConfirm(false);
+    setSensorModalTarget({
+      pointCode: point?.pointCode ?? feature.id,
+      mode: reading ? "edit" : "create",
+      readingId: reading?.readingId,
+      initialValues: reading ? sensorReadingToFormValues(reading) : undefined,
+    });
+  };
+
+  const handleSubmitSensorReading = async (values: SensorFormValues) => {
+    if (
+      !sensorModalTarget ||
+      !selectedLahanId ||
+      !mapDataQuery.data?.lahan.captureId
+    ) {
+      setSensorModalError("Data titik inspeksi belum lengkap.");
+      return;
+    }
+
+    const payload = {
+      pointCode: sensorModalTarget.pointCode,
+      temperatureC: parseSensorNumber(values.temperatureC),
+      humidityPct: parseSensorNumber(values.humidityPct),
+      co2Ppm: parseSensorNumber(values.co2Ppm),
+      nh3Ppm: parseSensorNumber(values.nh3Ppm),
+      coPpm: parseSensorNumber(values.coPpm),
+      no2Ppm: parseSensorNumber(values.no2Ppm),
+    };
+
+    const hasAnySensorValue = [
+      payload.temperatureC,
+      payload.humidityPct,
+      payload.co2Ppm,
+      payload.nh3Ppm,
+      payload.coPpm,
+      payload.no2Ppm,
+    ].some((value) => value !== null);
+
+    if (!hasAnySensorValue) {
+      setSensorModalError("Isi minimal satu nilai sensor dulu.");
+      return;
+    }
+
+    setIsSavingSensor(true);
+    setSensorModalError(null);
+
+    try {
+      if (sensorModalTarget.mode === "edit" && sensorModalTarget.readingId) {
+        await updateSensorReading(
+          selectedLahanId,
+          mapDataQuery.data.lahan.captureId,
+          sensorModalTarget.pointCode,
+          sensorModalTarget.readingId,
+          {
+            temperatureC: payload.temperatureC,
+            humidityPct: payload.humidityPct,
+            co2Ppm: payload.co2Ppm,
+            nh3Ppm: payload.nh3Ppm,
+            coPpm: payload.coPpm,
+            no2Ppm: payload.no2Ppm,
+          },
+        );
+      } else {
+        await addSensorReading(
+          selectedLahanId,
+          mapDataQuery.data.lahan.captureId,
+          payload,
+        );
+      }
+
+      setSensorModalTarget(null);
+    } catch {
+      setSensorModalError("Gagal menyimpan data sensor.");
+    } finally {
+      setIsSavingSensor(false);
+    }
+  };
+
+  const handleDeleteSensorReading = async () => {
+    if (
+      !sensorModalTarget ||
+      sensorModalTarget.mode !== "edit" ||
+      !sensorModalTarget.readingId ||
+      !selectedLahanId ||
+      !mapDataQuery.data?.lahan.captureId
+    ) {
+      setSensorModalError("Data sensor belum lengkap.");
+      return;
+    }
+
+    setIsSavingSensor(true);
+    setSensorModalError(null);
+
+    try {
+      await deleteSensorReading(
+        selectedLahanId,
+        mapDataQuery.data.lahan.captureId,
+        sensorModalTarget.pointCode,
+        sensorModalTarget.readingId,
+      );
+      setShowDeleteSensorConfirm(false);
+      setSensorModalTarget(null);
+    } catch {
+      setSensorModalError("Gagal menghapus data sensor.");
+    } finally {
+      setIsSavingSensor(false);
+    }
+  };
+
+  const handleRequestDeleteSensorReading = () => {
+    setSensorModalError(null);
+    setShowDeleteSensorConfirm(true);
   };
 
   return (
@@ -2678,6 +3690,7 @@ export default function MapUI({
         {focusedFeature && (
           <SelectedFeatureMarker
             feature={focusedFeature}
+            onOpenSensorModal={handleOpenSensorModal}
             onClose={() => {
               if (panelSelectedFeature) {
                 setPanelSelectedFeature(null);
@@ -2690,6 +3703,12 @@ export default function MapUI({
         )}
 
         <LahanGridRectangles
+          mapData={mapDataQuery.data}
+          activeOverlays={activeOverlays}
+          selectedFeature={focusedFeature}
+          onSelectFeature={setPanelSelectedFeature}
+        />
+        <InspectionPointMarkers
           mapData={mapDataQuery.data}
           activeOverlays={activeOverlays}
           onSelectFeature={setPanelSelectedFeature}
@@ -2708,6 +3727,7 @@ export default function MapUI({
                   data: row,
                 }}
                 onClose={() => {}}
+                onOpenSensorModal={handleOpenSensorModal}
                 autoFocus={false}
               />
             );
@@ -2771,6 +3791,59 @@ export default function MapUI({
         onSelectFeature={setPanelSelectedFeature}
         onCloseLayer={toggleOverlay}
       />
+      <SensorReadingModal
+        target={sensorModalTarget}
+        isSaving={isSavingSensor}
+        error={sensorModalError}
+        onClose={() => {
+          if (isSavingSensor) {
+            return;
+          }
+
+          setShowDeleteSensorConfirm(false);
+          setSensorModalTarget(null);
+          setSensorModalError(null);
+        }}
+        onSubmit={handleSubmitSensorReading}
+        onDelete={handleRequestDeleteSensorReading}
+      />
+      {showDeleteSensorConfirm && sensorModalTarget?.mode === "edit" && (
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-[2px]">
+          <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-rose-700">
+                Hapus Sensor
+              </p>
+              <h2 className="mt-1 text-lg font-black text-slate-950">
+                Hapus data sensor ini?
+              </h2>
+              <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
+                Data reading yang dipilih akan dihapus dari riwayat titik{" "}
+                {sensorModalTarget.pointCode}.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setShowDeleteSensorConfirm(false)}
+                disabled={isSavingSensor}
+                className="h-10 rounded-xl px-4 text-[12px] font-black uppercase tracking-wider text-slate-500 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteSensorReading}
+                disabled={isSavingSensor}
+                className="flex h-10 items-center gap-2 rounded-xl bg-rose-700 px-4 text-[12px] font-black uppercase tracking-wider text-white shadow-[0_10px_22px_rgba(190,18,60,0.22)] transition hover:bg-rose-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+              >
+                {isSavingSensor && <Loader2 className="h-4 w-4 animate-spin" />}
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

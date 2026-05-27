@@ -13,7 +13,7 @@ function getFeatureFromParams(featureId: string | null, mode: string | null): Se
 
   const normalizedMode = mode as MapMode;
 
-  if (!["default", "fase1", "fase2-ndvi", "fase2-hama"].includes(normalizedMode)) {
+  if (!["default", "fase1", "inspection", "fase2-ndvi", "fase2-hama"].includes(normalizedMode)) {
     return null;
   }
 

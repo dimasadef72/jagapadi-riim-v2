@@ -3,7 +3,7 @@ export type LatLngPoint = {
   lng: number;
 };
 
-export type ClusterLabel = "hijau" | "kuning" | "merah";
+export type ClusterLabel = string;
 
 export type Lahan = {
   fieldCode: string;
@@ -11,11 +11,30 @@ export type Lahan = {
   topRight: LatLngPoint;
   bottomRight: LatLngPoint;
   bottomLeft: LatLngPoint;
+  createdAt: unknown;
+  updatedAt?: unknown;
+};
+
+export type LahanCapture = {
+  captureId: string;
+  fieldCode: string;
+  gsd?: number | null;
+  gsdUnit?: string | null;
+  imageBounds?: {
+    topLeft: LatLngPoint;
+    topRight: LatLngPoint;
+    bottomRight: LatLngPoint;
+    bottomLeft: LatLngPoint;
+  } | null;
+  centerLat?: number | null;
+  centerLng?: number | null;
   rgbUrl: string | null;
   ndviUrl: string | null;
   clusterUrl: string | null;
+  gridsJsonUrl?: string | null;
   capturedAt: unknown;
   createdAt: unknown;
+  updatedAt?: unknown;
 };
 
 export type LahanGrid = {
@@ -26,8 +45,11 @@ export type LahanGrid = {
   topRight: LatLngPoint;
   bottomRight: LatLngPoint;
   bottomLeft: LatLngPoint;
-  clusterId: string;
+  clusterId: string | number | null;
   clusterLabel: ClusterLabel;
+  gridColor?: "Red" | "Yellow" | "Green" | string | null;
+  isPlant?: boolean | null;
+  spatialClusterId?: string | number | null;
   ndviMean: number | null;
   ndviMin?: number | null;
   ndviMax?: number | null;
@@ -42,7 +64,7 @@ export type LahanGrid = {
 
 export type InspectionPoint = {
   pointCode: string;
-  clusterId: string;
+  clusterId: string | number | null;
   clusterLabel: ClusterLabel;
   inspectionLat: number;
   inspectionLng: number;
@@ -51,9 +73,10 @@ export type InspectionPoint = {
 };
 
 export type SensorReading = {
+  readingId?: string;
   pointCode?: string;
-  latitude: number;
-  longitude: number;
+  latitude?: number | null;
+  longitude?: number | null;
   co2Ppm?: number | null;
   nh3Ppm?: number | null;
   coPpm?: number | null;

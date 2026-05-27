@@ -1,4 +1,4 @@
-export type MapMode = "default" | "fase1" | "fase2-ndvi" | "fase2-hama";
+export type MapMode = "default" | "fase1" | "inspection" | "fase2-ndvi" | "fase2-hama";
 
 export interface SelectedMapFeature {
   id: string;
