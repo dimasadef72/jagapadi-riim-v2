@@ -28,7 +28,10 @@ function readData<T>(snapshot: { data: () => unknown }): T {
   return snapshot.data() as T;
 }
 
-function readSensorReading(snapshot: { id: string; data: () => unknown }): SensorReading {
+function readSensorReading(snapshot: {
+  id: string;
+  data: () => unknown;
+}): SensorReading {
   return {
     ...readData<SensorReading>(snapshot),
     readingId: snapshot.id,
@@ -54,7 +57,7 @@ async function resolveStorageDownloadUrl(url: string) {
     .map(encodeURIComponent)
     .join("/");
 
-  return `https://storage.googleapis.com/${bucket}/${objectPath}?cacheBust=1`;
+  return `https://storage.googleapis.com/${bucket}/${objectPath}`;
 }
 
 function normalizeGrid(item: LahanGrid): LahanGrid {
@@ -73,15 +76,14 @@ async function getGridsFromJson(gridsJsonUrl: string) {
   }
 
   const payload = (await response.json()) as unknown;
-  const grids =
-    Array.isArray(payload)
-      ? payload
-      : typeof payload === "object" &&
-          payload !== null &&
-          "grids" in payload &&
-          Array.isArray(payload.grids)
-        ? payload.grids
-        : [];
+  const grids = Array.isArray(payload)
+    ? payload
+    : typeof payload === "object" &&
+        payload !== null &&
+        "grids" in payload &&
+        Array.isArray(payload.grids)
+      ? payload.grids
+      : [];
 
   return grids
     .map((item) => normalizeGrid(item as LahanGrid))
@@ -137,7 +139,11 @@ export async function getLatestCapture(fieldCode: string) {
   };
 }
 
-export async function getGrids(_fieldCode: string, captureId: string, gridsJsonUrl?: string | null) {
+export async function getGrids(
+  _fieldCode: string,
+  captureId: string,
+  gridsJsonUrl?: string | null,
+) {
   if (!gridsJsonUrl) {
     throw new Error(`Capture ${captureId} belum memiliki gridsJsonUrl.`);
   }
@@ -145,9 +151,21 @@ export async function getGrids(_fieldCode: string, captureId: string, gridsJsonU
   return getGridsFromJson(gridsJsonUrl);
 }
 
-export async function getInspectionPoints(fieldCode: string, captureId: string) {
+export async function getInspectionPoints(
+  fieldCode: string,
+  captureId: string,
+) {
   const db = getFirebaseDb();
-  const snapshot = await getDocs(collection(db, "lahan", fieldCode, "captures", captureId, "inspection_points"));
+  const snapshot = await getDocs(
+    collection(
+      db,
+      "lahan",
+      fieldCode,
+      "captures",
+      captureId,
+      "inspection_points",
+    ),
+  );
 
   return snapshot.docs.map((item) => ({
     ...readData<InspectionPoint>(item),
@@ -155,7 +173,12 @@ export async function getInspectionPoints(fieldCode: string, captureId: string) 
   }));
 }
 
-export async function getSensorReadings(fieldCode: string, captureId: string, pointCode: string, maxResults = 1) {
+export async function getSensorReadings(
+  fieldCode: string,
+  captureId: string,
+  pointCode: string,
+  maxResults = 1,
+) {
   const db = getFirebaseDb();
   const snapshot = await getDocs(
     query(
@@ -219,7 +242,11 @@ export type SensorReadingInput = {
   humidityPct?: number | null;
 };
 
-export async function addSensorReading(fieldCode: string, captureId: string, input: SensorReadingInput) {
+export async function addSensorReading(
+  fieldCode: string,
+  captureId: string,
+  input: SensorReadingInput,
+) {
   const db = getFirebaseDb();
   const recordedAtMillis = Date.now();
   const readingId = recordedAtMillis.toString();
@@ -299,7 +326,16 @@ export async function deleteSensorReading(
 
 export async function getHamaDetections(fieldCode: string, captureId: string) {
   const db = getFirebaseDb();
-  const snapshot = await getDocs(collection(db, "lahan", fieldCode, "captures", captureId, "hama_detections"));
+  const snapshot = await getDocs(
+    collection(
+      db,
+      "lahan",
+      fieldCode,
+      "captures",
+      captureId,
+      "hama_detections",
+    ),
+  );
 
   return snapshot.docs.map((item) => ({
     id: item.id,
@@ -307,14 +343,23 @@ export async function getHamaDetections(fieldCode: string, captureId: string) {
   }));
 }
 
-export async function getLatestSensorReadingsByGrid(fieldCode: string, captureId: string) {
+export async function getLatestSensorReadingsByGrid(
+  fieldCode: string,
+  captureId: string,
+) {
   const inspectionPoints = await getInspectionPoints(fieldCode, captureId);
   const sensorEntries = await Promise.all(
     inspectionPoints.map(async (point) => {
-      const readings = await getSensorReadings(fieldCode, captureId, point.pointCode);
+      const readings = await getSensorReadings(
+        fieldCode,
+        captureId,
+        point.pointCode,
+      );
       const latestReading = readings[0] ?? null;
 
-      return point.representativeGridCodes.map((gridCode) => [gridCode, latestReading] as const);
+      return point.representativeGridCodes.map(
+        (gridCode) => [gridCode, latestReading] as const,
+      );
     }),
   );
 
