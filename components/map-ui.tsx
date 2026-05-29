@@ -3344,7 +3344,7 @@ function sensorReadingToFormValues(
 }
 
 function parseSensorNumber(value: string) {
-  const trimmed = value.trim();
+  const trimmed = normalizeSensorNumberInput(value.trim());
 
   if (!trimmed) {
     return null;
@@ -3436,14 +3436,13 @@ function SensorReadingModal({
     key: keyof SensorFormValues;
     label: string;
     unit: string;
-    step: string;
   }> = [
-    { key: "temperatureC", label: "Suhu", unit: "C", step: "0.1" },
-    { key: "humidityPct", label: "Humidity", unit: "%", step: "0.1" },
-    { key: "co2Ppm", label: "CO2", unit: "ppm", step: "0.1" },
-    { key: "nh3Ppm", label: "NH3", unit: "ppm", step: "0.001" },
-    { key: "coPpm", label: "CO", unit: "ppm", step: "0.001" },
-    { key: "no2Ppm", label: "NO2", unit: "ppm", step: "0.001" },
+    { key: "temperatureC", label: "Suhu", unit: "C" },
+    { key: "humidityPct", label: "Humidity", unit: "%" },
+    { key: "co2Ppm", label: "CO2", unit: "ppm" },
+    { key: "nh3Ppm", label: "NH3", unit: "ppm" },
+    { key: "coPpm", label: "CO", unit: "ppm" },
+    { key: "no2Ppm", label: "NO2", unit: "ppm" },
   ];
 
   const hasAnyValue = Object.values(values).some((value) => value.trim());
@@ -3478,6 +3477,7 @@ function SensorReadingModal({
 
         <form
           onSubmit={handleSubmit}
+          noValidate
           className="max-h-[78vh] overflow-y-auto px-5 py-4"
         >
           <div className="grid grid-cols-2 gap-3">
@@ -3499,8 +3499,6 @@ function SensorReadingModal({
                     }
                     type="text"
                     inputMode="decimal"
-                    pattern="[0-9]*[.]?[0-9]*"
-                    step={field.step}
                     className="min-w-0 flex-1 bg-transparent text-base font-bold text-slate-900 outline-none [appearance:textfield] sm:text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                   <span className="ml-2 text-[10px] font-bold uppercase text-slate-400">
