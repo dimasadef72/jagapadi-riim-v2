@@ -1340,6 +1340,30 @@ function LocateUserButton() {
     latlng: L.LatLng;
     accuracy: number;
   } | null>(null);
+  const locateTimeoutRef = useRef<number | null>(null);
+  const bestLocationRef = useRef<{
+    latlng: L.LatLng;
+    accuracy: number;
+  } | null>(null);
+  const locatingRef = useRef(false);
+  const targetAccuracyMeters = 25;
+  const locateTimeoutMs = 15000;
+
+  const clearLocateTimeout = () => {
+    if (locateTimeoutRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(locateTimeoutRef.current);
+    locateTimeoutRef.current = null;
+  };
+
+  const finishLocate = () => {
+    clearLocateTimeout();
+    locatingRef.current = false;
+    setLoading(false);
+    map.stopLocate();
+  };
 
   const userLocationIcon = useMemo(
     () =>
@@ -1358,25 +1382,56 @@ function LocateUserButton() {
 
   useMapEvents({
     locationfound(event) {
-      setLoading(false);
-      setUserLocation({
+      const nextLocation = {
         latlng: event.latlng,
         accuracy: event.accuracy,
-      });
+      };
+      const currentBest = bestLocationRef.current;
+
+      if (!currentBest || nextLocation.accuracy <= currentBest.accuracy) {
+        bestLocationRef.current = nextLocation;
+        setUserLocation(nextLocation);
+      }
+
+      if (nextLocation.accuracy <= targetAccuracyMeters) {
+        finishLocate();
+      }
     },
     locationerror() {
-      setLoading(false);
+      finishLocate();
       alert("Tidak dapat menemukan lokasi. Pastikan izin lokasi aktif.");
     },
   });
 
+  useEffect(() => {
+    return () => {
+      clearLocateTimeout();
+      map.stopLocate();
+    };
+  }, [map]);
+
   const handleLocate = () => {
+    if (locatingRef.current) {
+      return;
+    }
+
+    clearLocateTimeout();
+    bestLocationRef.current = null;
+    locatingRef.current = true;
     setLoading(true);
+
     map.locate({
       setView: true,
       maxZoom: 17,
       enableHighAccuracy: true,
+      watch: true,
+      maximumAge: 0,
+      timeout: locateTimeoutMs,
     });
+
+    locateTimeoutRef.current = window.setTimeout(() => {
+      finishLocate();
+    }, locateTimeoutMs);
   };
 
   return (
