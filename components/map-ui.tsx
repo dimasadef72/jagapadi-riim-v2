@@ -575,150 +575,161 @@ function SelectedFeatureMarker({
                     const safeSensorIndex =
                       sensorReadings.length === 0
                         ? 0
-                        : Math.min(sensorHistoryIndex, sensorReadings.length - 1);
-                    const activeSensor = sensorReadings[safeSensorIndex] ?? null;
+                        : Math.min(
+                            sensorHistoryIndex,
+                            sensorReadings.length - 1,
+                          );
+                    const activeSensor =
+                      sensorReadings[safeSensorIndex] ?? null;
                     const canShowHistoryNav = sensorReadings.length > 1;
 
                     return (
                       <>
-                  <div className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left">
-                    <span>
-                      <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-700">
-                        <ThermometerSun className="h-3.5 w-3.5" />
-                        Sensor Lingkungan
-                      </span>
-                      <span className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
-                        {canShowHistoryNav && (
+                        <div className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left">
+                          <span>
+                            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-700">
+                              <ThermometerSun className="h-3.5 w-3.5" />
+                              Sensor Lingkungan
+                            </span>
+                            <span className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                              {canShowHistoryNav && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSensorHistoryIndex((current) =>
+                                      Math.min(
+                                        current + 1,
+                                        sensorReadings.length - 1,
+                                      ),
+                                    )
+                                  }
+                                  disabled={
+                                    safeSensorIndex >= sensorReadings.length - 1
+                                  }
+                                  className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+                                  aria-label="Sensor lebih lama"
+                                >
+                                  <ChevronLeft className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                              <span>
+                                {formatSensorRecordedAt(
+                                  activeSensor?.recordedAt ??
+                                    feature.data.recordedAt,
+                                )}
+                              </span>
+                              {canShowHistoryNav && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setSensorHistoryIndex((current) =>
+                                        Math.max(current - 1, 0),
+                                      )
+                                    }
+                                    disabled={safeSensorIndex === 0}
+                                    className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+                                    aria-label="Sensor lebih baru"
+                                  >
+                                    <ChevronRight className="h-3.5 w-3.5" />
+                                  </button>
+                                  <span className="rounded-md bg-white px-1.5 py-0.5 text-[9px] font-black text-slate-500">
+                                    {safeSensorIndex + 1}/
+                                    {sensorReadings.length}
+                                  </span>
+                                </>
+                              )}
+                            </span>
+                          </span>
                           <button
                             type="button"
                             onClick={() =>
-                              setSensorHistoryIndex((current) =>
-                                Math.min(current + 1, sensorReadings.length - 1),
-                              )
+                              setShowFase2SensorStats((current) => !current)
                             }
-                            disabled={safeSensorIndex >= sensorReadings.length - 1}
-                            className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
-                            aria-label="Sensor lebih lama"
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-sky-700 transition hover:bg-sky-50"
+                            aria-expanded={showFase2SensorStats}
+                            aria-label="Tampilkan sensor lingkungan"
                           >
-                            <ChevronLeft className="h-3.5 w-3.5" />
+                            <ChevronDown
+                              className={`h-4 w-4 transition-transform ${
+                                showFase2SensorStats ? "rotate-180" : ""
+                              }`}
+                            />
                           </button>
-                        )}
-                        <span>
-                          {formatSensorRecordedAt(
-                            activeSensor?.recordedAt ?? feature.data.recordedAt,
-                          )}
-                        </span>
-                        {canShowHistoryNav && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setSensorHistoryIndex((current) =>
-                                  Math.max(current - 1, 0),
-                                )
-                              }
-                              disabled={safeSensorIndex === 0}
-                              className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
-                              aria-label="Sensor lebih baru"
-                            >
-                              <ChevronRight className="h-3.5 w-3.5" />
-                            </button>
-                            <span className="rounded-md bg-white px-1.5 py-0.5 text-[9px] font-black text-slate-500">
-                              {safeSensorIndex + 1}/{sensorReadings.length}
-                            </span>
-                          </>
-                        )}
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShowFase2SensorStats((current) => !current)
-                      }
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-sky-700 transition hover:bg-sky-50"
-                      aria-expanded={showFase2SensorStats}
-                      aria-label="Tampilkan sensor lingkungan"
-                    >
-                      <ChevronDown
-                        className={`h-4 w-4 transition-transform ${
-                          showFase2SensorStats ? "rotate-180" : ""
-                        }`}
-                      />
-                    </button>
-                  </div>
-
-                  {showFase2SensorStats && (
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-slate-100 px-3 pb-2 pt-1.5">
-                      {[
-                        {
-                          label: "Suhu",
-                          value: activeSensor
-                            ? `${formatSensorNumber(activeSensor.temperatureC, 1)}°C`
-                            : feature.data.temp
-                            ? `${feature.data.temp}°C`
-                            : "-",
-                          color: "text-rose-700",
-                        },
-                        {
-                          label: "Humidity",
-                          value: activeSensor
-                            ? `${formatSensorNumber(activeSensor.humidityPct, 1)}%`
-                            : feature.data.humidity || "-",
-                          color: "text-blue-700",
-                        },
-                        {
-                          label: "CO2",
-                          value: activeSensor
-                            ? `${formatSensorNumber(activeSensor.co2Ppm, 1)} ppm`
-                            : feature.data.co2
-                            ? `${feature.data.co2} ppm`
-                            : "-",
-                          color: "text-emerald-700",
-                        },
-                        {
-                          label: "NH3",
-                          value: activeSensor
-                            ? `${formatSensorNumber(activeSensor.nh3Ppm, 3)} ppm`
-                            : feature.data.nh3
-                            ? `${feature.data.nh3} ppm`
-                            : "-",
-                          color: "text-violet-700",
-                        },
-                        {
-                          label: "CO",
-                          value: activeSensor
-                            ? `${formatSensorNumber(activeSensor.coPpm, 3)} ppm`
-                            : feature.data.co
-                            ? `${feature.data.co} ppm`
-                            : "-",
-                          color: "text-slate-700",
-                        },
-                        {
-                          label: "NO2",
-                          value: activeSensor
-                            ? `${formatSensorNumber(activeSensor.no2Ppm, 3)} ppm`
-                            : feature.data.no2
-                            ? `${feature.data.no2} ppm`
-                            : "-",
-                          color: "text-cyan-700",
-                        },
-                      ].map((stat) => (
-                        <div
-                          key={stat.label}
-                          className="flex items-baseline justify-between gap-3 border-b border-slate-200/70 pb-1 last:border-b-0 [&:nth-last-child(2)]:border-b-0"
-                        >
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            {stat.label}
-                          </span>
-                          <span
-                            className={`text-[12px] font-black tabular-nums ${stat.color}`}
-                          >
-                            {stat.value}
-                          </span>
                         </div>
-                      ))}
-                    </div>
-                  )}
+
+                        {showFase2SensorStats && (
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-slate-100 px-3 pb-2 pt-1.5">
+                            {[
+                              {
+                                label: "Suhu",
+                                value: activeSensor
+                                  ? `${formatSensorNumber(activeSensor.temperatureC, 1)}°C`
+                                  : feature.data.temp
+                                    ? `${feature.data.temp}°C`
+                                    : "-",
+                                color: "text-rose-700",
+                              },
+                              {
+                                label: "Humidity",
+                                value: activeSensor
+                                  ? `${formatSensorNumber(activeSensor.humidityPct, 1)}%`
+                                  : feature.data.humidity || "-",
+                                color: "text-blue-700",
+                              },
+                              {
+                                label: "CO2",
+                                value: activeSensor
+                                  ? `${formatSensorNumber(activeSensor.co2Ppm, 1)} ppm`
+                                  : feature.data.co2
+                                    ? `${feature.data.co2} ppm`
+                                    : "-",
+                                color: "text-emerald-700",
+                              },
+                              {
+                                label: "NH3",
+                                value: activeSensor
+                                  ? `${formatSensorNumber(activeSensor.nh3Ppm, 3)} ppm`
+                                  : feature.data.nh3
+                                    ? `${feature.data.nh3} ppm`
+                                    : "-",
+                                color: "text-violet-700",
+                              },
+                              {
+                                label: "CO",
+                                value: activeSensor
+                                  ? `${formatSensorNumber(activeSensor.coPpm, 3)} ppm`
+                                  : feature.data.co
+                                    ? `${feature.data.co} ppm`
+                                    : "-",
+                                color: "text-slate-700",
+                              },
+                              {
+                                label: "NO2",
+                                value: activeSensor
+                                  ? `${formatSensorNumber(activeSensor.no2Ppm, 3)} ppm`
+                                  : feature.data.no2
+                                    ? `${feature.data.no2} ppm`
+                                    : "-",
+                                color: "text-cyan-700",
+                              },
+                            ].map((stat) => (
+                              <div
+                                key={stat.label}
+                                className="flex items-baseline justify-between gap-3 border-b border-slate-200/70 pb-1 last:border-b-0 [&:nth-last-child(2)]:border-b-0"
+                              >
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                  {stat.label}
+                                </span>
+                                <span
+                                  className={`text-[12px] font-black tabular-nums ${stat.color}`}
+                                >
+                                  {stat.value}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </>
                     );
                   })()}
@@ -1640,7 +1651,11 @@ function getClusterStyles(cluster?: string) {
     };
   }
 
-  if (normalized.includes("non-tanaman") || normalized.includes("non tanaman") || normalized.includes("non-plant")) {
+  if (
+    normalized.includes("non-tanaman") ||
+    normalized.includes("non tanaman") ||
+    normalized.includes("non-plant")
+  ) {
     return {
       label: "Non-Tanaman",
       chip: "bg-slate-50 text-slate-600 border-slate-200",
@@ -1648,7 +1663,11 @@ function getClusterStyles(cluster?: string) {
     };
   }
 
-  if (normalized.includes("sehat") || normalized.includes("hijau") || normalized.includes("green")) {
+  if (
+    normalized.includes("sehat") ||
+    normalized.includes("hijau") ||
+    normalized.includes("green")
+  ) {
     return {
       label: normalized.includes("sehat") ? label : "Hijau",
       chip: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -1664,7 +1683,11 @@ function getClusterStyles(cluster?: string) {
     };
   }
 
-  if (normalized.includes("sedang") || normalized.includes("kuning") || normalized.includes("yellow")) {
+  if (
+    normalized.includes("sedang") ||
+    normalized.includes("kuning") ||
+    normalized.includes("yellow")
+  ) {
     return {
       label: normalized.includes("sedang") ? label : "Kuning",
       chip: "bg-amber-50 text-amber-700 border-amber-200",
@@ -1680,7 +1703,11 @@ function getClusterStyles(cluster?: string) {
     };
   }
 
-  if (normalized.includes("kritis") || normalized.includes("merah") || normalized.includes("red")) {
+  if (
+    normalized.includes("kritis") ||
+    normalized.includes("merah") ||
+    normalized.includes("red")
+  ) {
     return {
       label: normalized.includes("kritis") ? label : "Merah",
       chip: "bg-rose-50 text-rose-700 border-rose-200",
@@ -1698,7 +1725,8 @@ function getClusterStyles(cluster?: string) {
 function getClusterSortRank(label: string) {
   const normalized = label.toLowerCase();
 
-  if (normalized.includes("non-tanaman") || normalized.includes("non tanaman")) return 0;
+  if (normalized.includes("non-tanaman") || normalized.includes("non tanaman"))
+    return 0;
   if (normalized.includes("kritis")) return 1;
   if (normalized.includes("stres") || normalized.includes("stress")) return 2;
   if (normalized.includes("sedang")) return 3;
@@ -1887,72 +1915,74 @@ function LayerDataPanel({
           ? "Analitik NDVI & sensor"
           : "Indikasi hama & rekomendasi";
   const normalizedQuery = normalizeSearchText(query);
-  const filteredRows = rows.filter((row) => {
-    const rowData = row;
-    const cluster =
-      activePhase === "hama"
-        ? getHamaRiskStyles(rowData.tingkat, rowData.status).label
-        : getClusterStyles(rowData.cluster).label;
-    const coordinates = row.coordinates;
-    const searchableText = [
-      row.grid,
-      row.grid.replace("-", ""),
-      rowData.mean,
-      rowData.min,
-      rowData.max,
-      rowData.stddev,
-      cluster,
-      rowData.status,
-      rowData.tingkat,
-      rowData.jenis,
-      rowData.area,
-      rowData.rekomendasi,
-      rowData.representedGrids,
-      rowData.sensorStatus,
-      coordinates?.[1],
-      coordinates?.[0],
-      activePhase === "fase2" || activePhase === "inspection"
-        ? rowData.co2
-        : "",
-      activePhase === "fase2" || activePhase === "inspection"
-        ? rowData.temp
-        : "",
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    return (
-      (!normalizedQuery ||
-        normalizeSearchText(searchableText).includes(normalizedQuery)) &&
-      (clusterFilter === "semua" || cluster.toLowerCase() === clusterFilter)
-    );
-  }).sort((a, b) => {
-    if (!sortKey) {
-      return 0;
-    }
-
-    let sortValue = 0;
-
-    if (sortKey === "mean") {
-      sortValue = panelNumericValue(a.mean) - panelNumericValue(b.mean);
-    } else if (sortKey === "cluster") {
-      const aCluster =
+  const filteredRows = rows
+    .filter((row) => {
+      const rowData = row;
+      const cluster =
         activePhase === "hama"
-          ? getHamaRiskStyles(a.tingkat, a.status).label
-          : getClusterStyles(a.cluster).label;
-      const bCluster =
-        activePhase === "hama"
-          ? getHamaRiskStyles(b.tingkat, b.status).label
-          : getClusterStyles(b.cluster).label;
+          ? getHamaRiskStyles(rowData.tingkat, rowData.status).label
+          : getClusterStyles(rowData.cluster).label;
+      const coordinates = row.coordinates;
+      const searchableText = [
+        row.grid,
+        row.grid.replace("-", ""),
+        rowData.mean,
+        rowData.min,
+        rowData.max,
+        rowData.stddev,
+        cluster,
+        rowData.status,
+        rowData.tingkat,
+        rowData.jenis,
+        rowData.area,
+        rowData.rekomendasi,
+        rowData.representedGrids,
+        rowData.sensorStatus,
+        coordinates?.[1],
+        coordinates?.[0],
+        activePhase === "fase2" || activePhase === "inspection"
+          ? rowData.co2
+          : "",
+        activePhase === "fase2" || activePhase === "inspection"
+          ? rowData.temp
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
 
-      sortValue =
-        getClusterSortRank(aCluster) - getClusterSortRank(bCluster) ||
-        compareClusterLabels(aCluster, bCluster);
-    }
+      return (
+        (!normalizedQuery ||
+          normalizeSearchText(searchableText).includes(normalizedQuery)) &&
+        (clusterFilter === "semua" || cluster.toLowerCase() === clusterFilter)
+      );
+    })
+    .sort((a, b) => {
+      if (!sortKey) {
+        return 0;
+      }
 
-    return sortDirection === "asc" ? sortValue : -sortValue;
-  });
+      let sortValue = 0;
+
+      if (sortKey === "mean") {
+        sortValue = panelNumericValue(a.mean) - panelNumericValue(b.mean);
+      } else if (sortKey === "cluster") {
+        const aCluster =
+          activePhase === "hama"
+            ? getHamaRiskStyles(a.tingkat, a.status).label
+            : getClusterStyles(a.cluster).label;
+        const bCluster =
+          activePhase === "hama"
+            ? getHamaRiskStyles(b.tingkat, b.status).label
+            : getClusterStyles(b.cluster).label;
+
+        sortValue =
+          getClusterSortRank(aCluster) - getClusterSortRank(bCluster) ||
+          compareClusterLabels(aCluster, bCluster);
+      }
+
+      return sortDirection === "asc" ? sortValue : -sortValue;
+    });
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pagedRows = filteredRows.slice(
@@ -1961,18 +1991,18 @@ function LayerDataPanel({
   );
   const isTableLoading = Boolean(isMapDataLoading && selectedLahan);
 
-	  const handleSelectGrid = (row: (typeof rows)[number]) => {
-	    onSelectFeature({
-	      id: row.grid,
-	      mode,
-	      coordinates: row.coordinates,
-	      data: row,
-	    });
+  const handleSelectGrid = (row: (typeof rows)[number]) => {
+    onSelectFeature({
+      id: row.grid,
+      mode,
+      coordinates: row.coordinates,
+      data: row,
+    });
 
-	    if (window.matchMedia("(max-width: 639px)").matches) {
-	      setSheetState("collapsed");
-	    }
-	  };
+    if (window.matchMedia("(max-width: 639px)").matches) {
+      setSheetState("collapsed");
+    }
+  };
 
   const handleSort = (key: PanelSortKey) => {
     if (sortKey === key) {
@@ -2014,21 +2044,21 @@ function LayerDataPanel({
       return;
     }
 
-	    onSelectFeature({
-	      id: mapData.lahan.fieldCode,
-	      mode: "default",
-	      coordinates: [mapData.lahan.center.lat, mapData.lahan.center.lng],
+    onSelectFeature({
+      id: mapData.lahan.fieldCode,
+      mode: "default",
+      coordinates: [mapData.lahan.center.lat, mapData.lahan.center.lng],
       data: {
         type: "lahan",
         ...mapData.lahan,
-	        center: [mapData.lahan.center.lat, mapData.lahan.center.lng],
-	      },
-	    });
+        center: [mapData.lahan.center.lat, mapData.lahan.center.lng],
+      },
+    });
 
-	    if (window.matchMedia("(max-width: 639px)").matches) {
-	      setSheetState("collapsed");
-	    }
-	  };
+    if (window.matchMedia("(max-width: 639px)").matches) {
+      setSheetState("collapsed");
+    }
+  };
 
   if (availablePhases.length === 0) {
     return null;
@@ -2214,10 +2244,7 @@ function LayerDataPanel({
               setClusterFilter(value);
               setPage(1);
             }}
-            options={[
-              { value: "semua", label: "Semua" },
-              ...clusterOptions,
-            ]}
+            options={[{ value: "semua", label: "Semua" }, ...clusterOptions]}
           />
         </div>
       </div>
@@ -3221,7 +3248,9 @@ function LahanGridRectangles({
               [grid.corners.bottomLeft.lat, grid.corners.bottomLeft.lng],
             ]}
             pathOptions={{
-              color: isRepresentedBySelectedInspection ? "#f8fafc" : style.color,
+              color: isRepresentedBySelectedInspection
+                ? "#f8fafc"
+                : style.color,
               weight: isRepresentedBySelectedInspection ? 3 : 1,
               opacity: isRepresentedBySelectedInspection
                 ? 1
@@ -3648,9 +3677,7 @@ export default function MapUI({
             updatedPoint.representativeGridCodes,
           );
           const grids = current.grids.map((grid) => {
-            const isRepresentedByCode = representedGridCodes.has(
-              grid.gridCode,
-            );
+            const isRepresentedByCode = representedGridCodes.has(grid.gridCode);
             const isRepresentedBySpatialCluster =
               updatedPoint.clusterId !== null &&
               updatedPoint.clusterId !== undefined &&
@@ -3924,7 +3951,7 @@ export default function MapUI({
           <TileLayer
             attribution="Tiles &copy; Esri"
             url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-            maxNativeZoom={19}
+            maxNativeZoom={18}
             maxZoom={24}
           />
         )}
