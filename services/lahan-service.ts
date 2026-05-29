@@ -63,7 +63,7 @@ async function resolveStorageDownloadUrl(url: string) {
 function normalizeGrid(item: LahanGrid): LahanGrid {
   return {
     ...item,
-    clusterLabel: item.clusterLabel || item.gridColor || "-",
+    clusterLabel: item.clusterLabel || "-",
   };
 }
 

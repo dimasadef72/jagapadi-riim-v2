@@ -40,6 +40,7 @@ type SortKey =
   | "median"
   | "variance"
   | "p25"
+  | "p50"
   | "p75"
   | "cluster";
 type SortDirection = "asc" | "desc";
@@ -56,26 +57,69 @@ function formatDate(value: string | null | undefined) {
 }
 
 function getClusterLabel(cluster: string | undefined) {
+  const normalized = (cluster || "").toLowerCase();
+
   if (!cluster) return "-";
-  if (cluster.includes("Merah")) return "Merah";
-  if (cluster.includes("Kuning")) return "Kuning";
-  return "Hijau";
+  if (
+    normalized.includes("non-tanaman") ||
+    normalized.includes("non tanaman") ||
+    normalized.includes("non-plant")
+  ) {
+    return "Non-Tanaman";
+  }
+  if (normalized.includes("kritis")) return "Kritis";
+  if (normalized.includes("stres") || normalized.includes("stress")) return "Stres";
+  if (normalized.includes("sedang")) return "Sedang";
+  if (normalized.includes("cukup")) return "Cukup";
+  if (normalized.includes("sehat")) return "Sehat";
+  if (normalized.includes("merah") || normalized.includes("red")) return "Merah";
+  if (normalized.includes("kuning") || normalized.includes("yellow")) return "Kuning";
+  if (normalized.includes("hijau") || normalized.includes("green")) return "Hijau";
+
+  return cluster.trim();
 }
 
 function getClusterClass(cluster: string | undefined) {
-  if (!cluster) {
+  const normalized = getClusterLabel(cluster).toLowerCase();
+
+  if (normalized === "-") {
     return "bg-slate-50 text-slate-500 border-slate-100";
   }
 
-  if (cluster.includes("Merah")) {
+  if (normalized.includes("non-tanaman")) {
+    return "bg-slate-50 text-slate-600 border-slate-200";
+  }
+
+  if (normalized.includes("kritis") || normalized.includes("merah")) {
     return "bg-rose-50 text-rose-700 border-rose-100";
   }
 
-  if (cluster.includes("Kuning")) {
+  if (normalized.includes("stres")) {
+    return "bg-orange-50 text-orange-700 border-orange-100";
+  }
+
+  if (normalized.includes("sedang") || normalized.includes("kuning")) {
     return "bg-amber-50 text-amber-700 border-amber-100";
   }
 
+  if (normalized.includes("cukup")) {
+    return "bg-lime-50 text-lime-700 border-lime-100";
+  }
+
   return "bg-emerald-50 text-emerald-700 border-emerald-100";
+}
+
+function getClusterSortRank(cluster: string) {
+  const normalized = cluster.toLowerCase();
+
+  if (normalized.includes("non-tanaman")) return 0;
+  if (normalized.includes("kritis") || normalized.includes("merah")) return 1;
+  if (normalized.includes("stres")) return 2;
+  if (normalized.includes("sedang") || normalized.includes("kuning")) return 3;
+  if (normalized.includes("cukup")) return 4;
+  if (normalized.includes("sehat") || normalized.includes("hijau")) return 5;
+
+  return 99;
 }
 
 export default function Fase1NdviScreen({
@@ -109,6 +153,24 @@ export default function Fase1NdviScreen({
     () => mapDataQuery.data?.grids.map(toNdviTableRow) ?? [],
     [mapDataQuery.data],
   );
+  const clusterOptions = useMemo(() => {
+    const options = new Map<string, string>();
+
+    rows.forEach((row) => {
+      const label = getClusterLabel(row.cluster);
+      const value = label.toLowerCase();
+
+      if (label !== "-" && !options.has(value)) {
+        options.set(value, label);
+      }
+    });
+
+    return Array.from(options, ([value, label]) => ({ value, label })).sort(
+      (a, b) =>
+        getClusterSortRank(a.label) - getClusterSortRank(b.label) ||
+        a.label.localeCompare(b.label, undefined, { numeric: true }),
+    );
+  }, [rows]);
 
   useEffect(() => {
     if (selectedLahanId || lahanOptions.length === 0) {
@@ -136,6 +198,7 @@ export default function Fase1NdviScreen({
         row.median,
         row.variance,
         row.p25,
+        row.p50,
         row.p75,
         getClusterLabel(row.cluster),
       ]
@@ -333,19 +396,19 @@ export default function Fase1NdviScreen({
 
         <section className="flex min-h-[260px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_2px_12px_rgba(15,23,42,0.04)]">
           <div className="relative min-h-[260px] flex-1 bg-slate-100">
-            {mapDataQuery.data?.layers.rgb?.url ? (
+            {mapDataQuery.data?.layers.ndvi?.url ? (
               <img
-                src={mapDataQuery.data.layers.rgb.url}
-                alt={`RGB ${selectedLahanOption?.name ?? "lahan"}`}
+                src={mapDataQuery.data.layers.ndvi.url}
+                alt={`NDVI ${selectedLahanOption?.name ?? "lahan"}`}
                 className="absolute inset-0 h-full w-full object-cover"
               />
             ) : (
               <div className="flex h-full items-center justify-center text-[13px] font-semibold text-slate-500">
-                RGB lahan belum tersedia.
+                NDVI lahan belum tersedia.
               </div>
             )}
             <div className="absolute left-4 top-4 rounded-xl border border-white/40 bg-white/90 px-3 py-2 text-[11px] font-black uppercase tracking-widest text-emerald-700 shadow-sm backdrop-blur">
-              RGB Lahan
+              NDVI Lahan
             </div>
           </div>
         </section>
@@ -385,9 +448,7 @@ export default function Fase1NdviScreen({
               }}
               options={[
                 { value: "semua", label: "Semua Cluster" },
-                { value: "hijau", label: "Hijau" },
-                { value: "kuning", label: "Kuning" },
-                { value: "merah", label: "Merah" },
+                ...clusterOptions,
               ]}
             />
           </div>
@@ -410,7 +471,7 @@ export default function Fase1NdviScreen({
                   Center Grid
                 </th>
                 <th
-                  colSpan={8}
+                  colSpan={9}
                   className="border-r border-b border-slate-300 px-5 py-3 text-center text-[12px] font-bold uppercase tracking-wider text-slate-700"
                 >
                   NDVI
@@ -443,6 +504,7 @@ export default function Fase1NdviScreen({
                   ["median", "Median"],
                   ["variance", "Variance"],
                   ["p25", "P25"],
+                  ["p50", "P50"],
                   ["p75", "P75"],
                 ].map(([key, label]) => (
                   <th
@@ -489,6 +551,7 @@ export default function Fase1NdviScreen({
                       row.median,
                       row.variance,
                       row.p25,
+                      row.p50,
                       row.p75,
                     ].map((value, index) => (
                       <td

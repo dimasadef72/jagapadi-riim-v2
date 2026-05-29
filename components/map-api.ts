@@ -13,7 +13,14 @@ import {
   getLatestCapture,
   getSensorReadings,
 } from "@/services/lahan-service";
-import type { HamaDetection, InspectionPoint, Lahan, LahanCapture, LahanGrid, SensorReading } from "@/types/lahan";
+import type {
+  HamaDetection,
+  InspectionPoint,
+  Lahan,
+  LahanCapture,
+  LahanGrid,
+  SensorReading,
+} from "@/types/lahan";
 
 export type LahanOption = {
   id: string;
@@ -82,6 +89,7 @@ export type MapGrid = {
     humidityPct: number | null;
     recordedAt: string;
   } | null;
+  sensorReadings: MapSensorReading[];
 };
 
 export type MapHama = {
@@ -255,13 +263,35 @@ function createMockGrid(
     },
     sensor: {
       co2Ppm: 410 + rowIndex * 12,
-      nh3Ppm: clusterLabel === "merah" ? 5.1 : clusterLabel === "kuning" ? 2.8 : 1.1,
+      nh3Ppm:
+        clusterLabel === "merah" ? 5.1 : clusterLabel === "kuning" ? 2.8 : 1.1,
       coPpm: clusterLabel === "merah" ? 1.2 : 0.4,
       no2Ppm: clusterLabel === "merah" ? 0.09 : 0.03,
-      temperatureC: clusterLabel === "merah" ? 33 : clusterLabel === "kuning" ? 30 : 28,
-      humidityPct: clusterLabel === "merah" ? 32 : clusterLabel === "kuning" ? 48 : 66,
+      temperatureC:
+        clusterLabel === "merah" ? 33 : clusterLabel === "kuning" ? 30 : 28,
+      humidityPct:
+        clusterLabel === "merah" ? 32 : clusterLabel === "kuning" ? 48 : 66,
       recordedAt: "2026-05-26T08:00:00.000Z",
     },
+    sensorReadings: [
+      {
+        readingId: `${gridCode}-S1`,
+        co2Ppm: 410 + rowIndex * 12,
+        nh3Ppm:
+          clusterLabel === "merah"
+            ? 5.1
+            : clusterLabel === "kuning"
+              ? 2.8
+              : 1.1,
+        coPpm: clusterLabel === "merah" ? 1.2 : 0.4,
+        no2Ppm: clusterLabel === "merah" ? 0.09 : 0.03,
+        temperatureC:
+          clusterLabel === "merah" ? 33 : clusterLabel === "kuning" ? 30 : 28,
+        humidityPct:
+          clusterLabel === "merah" ? 32 : clusterLabel === "kuning" ? 48 : 66,
+        recordedAt: "2026-05-26T08:00:00.000Z",
+      },
+    ],
   };
 }
 
@@ -377,11 +407,46 @@ const mockMapData: LahanMapData = {
   ],
   grids: [
     createMockGrid("G-A1", 0, 0, { lat: -7.2494, lng: 112.7686 }, "hijau", 0.8),
-    createMockGrid("G-A2", 0, 1, { lat: -7.2494, lng: 112.7695 }, "kuning", 0.42),
-    createMockGrid("G-B1", 1, 0, { lat: -7.2503, lng: 112.7686 }, "merah", 0.18),
-    createMockGrid("G-B2", 1, 1, { lat: -7.2503, lng: 112.7695 }, "hijau", 0.75),
-    createMockGrid("G-C1", 2, 0, { lat: -7.2512, lng: 112.7686 }, "kuning", 0.48),
-    createMockGrid("G-C2", 2, 1, { lat: -7.2512, lng: 112.7695 }, "hijau", 0.66),
+    createMockGrid(
+      "G-A2",
+      0,
+      1,
+      { lat: -7.2494, lng: 112.7695 },
+      "kuning",
+      0.42,
+    ),
+    createMockGrid(
+      "G-B1",
+      1,
+      0,
+      { lat: -7.2503, lng: 112.7686 },
+      "merah",
+      0.18,
+    ),
+    createMockGrid(
+      "G-B2",
+      1,
+      1,
+      { lat: -7.2503, lng: 112.7695 },
+      "hijau",
+      0.75,
+    ),
+    createMockGrid(
+      "G-C1",
+      2,
+      0,
+      { lat: -7.2512, lng: 112.7686 },
+      "kuning",
+      0.48,
+    ),
+    createMockGrid(
+      "G-C2",
+      2,
+      1,
+      { lat: -7.2512, lng: 112.7695 },
+      "hijau",
+      0.66,
+    ),
   ],
   hama: [
     {
@@ -394,7 +459,8 @@ const mockMapData: LahanMapData = {
       status: "terindikasi",
       jenisHama: "Wereng Coklat",
       tingkatSerangan: "sedang",
-      rekomendasi: "Pantau ulang dan lakukan penyemprotan organik dosis rendah.",
+      rekomendasi:
+        "Pantau ulang dan lakukan penyemprotan organik dosis rendah.",
       imageUrl: null,
       detectedAt: "2026-05-26T08:00:00.000Z",
     },
@@ -452,7 +518,11 @@ function timestampToString(value: unknown): string | null {
   if (typeof value === "string") return value;
   if (value instanceof Date) return value.toISOString();
 
-  if (typeof value === "object" && "toDate" in value && typeof value.toDate === "function") {
+  if (
+    typeof value === "object" &&
+    "toDate" in value &&
+    typeof value.toDate === "function"
+  ) {
     return value.toDate().toISOString();
   }
 
@@ -513,7 +583,12 @@ async function resolveImageUrl(url: string | null | undefined) {
   return url;
 }
 
-function toLayerCorners(data: Pick<Lahan | LahanGrid, "topLeft" | "topRight" | "bottomRight" | "bottomLeft">): LayerCorners {
+function toLayerCorners(
+  data: Pick<
+    Lahan | LahanGrid,
+    "topLeft" | "topRight" | "bottomRight" | "bottomLeft"
+  >,
+): LayerCorners {
   return {
     topLeft: data.topLeft,
     topRight: data.topRight,
@@ -553,10 +628,14 @@ async function toImageLayer(
 
 function toMapGrid(
   grid: LahanGrid,
-  latestSensor: SensorReading | null | undefined,
+  sensorReadings: SensorReading[] | null | undefined,
 ): MapGrid {
   const corners = toLayerCorners(grid);
   const bounds = boundsFromCorners(corners);
+  const mappedSensorReadings = (sensorReadings ?? [])
+    .map(toMapSensorReading)
+    .filter((reading): reading is MapSensorReading => Boolean(reading));
+  const latestSensor = sensorReadings?.[0] ?? null;
 
   return {
     gridId: grid.gridCode,
@@ -568,7 +647,7 @@ function toMapGrid(
     center: centerFromBounds(bounds),
     inspection: null,
     ndvi: {
-      clusterLabel: grid.clusterLabel || grid.gridColor || "-",
+      clusterLabel: grid.clusterLabel || "-",
       gridColor: grid.gridColor ?? null,
       isPlant: grid.isPlant ?? null,
       spatialClusterId: grid.spatialClusterId ?? null,
@@ -593,10 +672,13 @@ function toMapGrid(
           recordedAt: timestampToString(latestSensor.recordedAt) ?? "",
         }
       : null,
+    sensorReadings: mappedSensorReadings,
   };
 }
 
-async function toMapHama(item: HamaDetection & { id: string }): Promise<MapHama> {
+async function toMapHama(
+  item: HamaDetection & { id: string },
+): Promise<MapHama> {
   return {
     id: item.id,
     gridId: item.gridCode ?? null,
@@ -613,7 +695,9 @@ async function toMapHama(item: HamaDetection & { id: string }): Promise<MapHama>
   };
 }
 
-export function toMapSensorReading(reading: SensorReading | null | undefined): MapSensorReading | null {
+export function toMapSensorReading(
+  reading: SensorReading | null | undefined,
+): MapSensorReading | null {
   if (!reading) {
     return null;
   }
@@ -650,7 +734,9 @@ function toMapInspectionPoint(
   };
 }
 
-async function fetchFirebaseLahanMapData(lahanId: string): Promise<LahanMapData> {
+async function fetchFirebaseLahanMapData(
+  lahanId: string,
+): Promise<LahanMapData> {
   const [lahan, capture] = await Promise.all([
     getLahan(lahanId),
     getLatestCapture(lahanId),
@@ -661,7 +747,9 @@ async function fetchFirebaseLahanMapData(lahanId: string): Promise<LahanMapData>
   }
 
   if (!capture) {
-    throw new Error(`Capture terbaru untuk ${lahanId} tidak ditemukan di Firestore.`);
+    throw new Error(
+      `Capture terbaru untuk ${lahanId} tidak ditemukan di Firestore.`,
+    );
   }
 
   const [grids, inspectionPoints, hama] = await Promise.all([
@@ -675,17 +763,27 @@ async function fetchFirebaseLahanMapData(lahanId: string): Promise<LahanMapData>
   const fieldCode = lahan.fieldCode || lahanId;
   const inspectionSensorEntries = await Promise.all(
     inspectionPoints.map(async (point) => {
-      const readings = await getSensorReadings(lahanId, capture.captureId, point.pointCode, 10);
+      const readings = await getSensorReadings(
+        lahanId,
+        capture.captureId,
+        point.pointCode,
+        10,
+      );
       return [point.pointCode, readings] as const;
     }),
   );
   const sensorByPoint = new Map(inspectionSensorEntries);
-  const sensorByGrid = new Map<string, SensorReading | null>();
+  const sensorReadingsByGrid = new Map<string, SensorReading[]>();
+  const sensorReadingsBySpatialCluster = new Map<string, SensorReading[]>();
 
   inspectionPoints.forEach((point) => {
-    const latestSensor = sensorByPoint.get(point.pointCode)?.[0] ?? null;
+    const readings = sensorByPoint.get(point.pointCode) ?? [];
+    if (point.clusterId !== null && point.clusterId !== undefined) {
+      sensorReadingsBySpatialCluster.set(String(point.clusterId), readings);
+    }
+
     point.representativeGridCodes.forEach((gridCode) => {
-      sensorByGrid.set(gridCode, latestSensor);
+      sensorReadingsByGrid.set(gridCode, readings);
     });
   });
 
@@ -704,7 +802,8 @@ async function fetchFirebaseLahanMapData(lahanId: string): Promise<LahanMapData>
       captureId: capture.captureId,
       bounds,
       center:
-        typeof capture.centerLat === "number" && typeof capture.centerLng === "number"
+        typeof capture.centerLat === "number" &&
+        typeof capture.centerLng === "number"
           ? { lat: capture.centerLat, lng: capture.centerLng }
           : centerFromBounds(bounds),
       capturedAt: timestampToString(capture.capturedAt),
@@ -714,7 +813,15 @@ async function fetchFirebaseLahanMapData(lahanId: string): Promise<LahanMapData>
       ndvi,
       cluster,
     },
-    grids: grids.map((grid) => toMapGrid(grid, sensorByGrid.get(grid.gridCode))),
+    grids: grids.map((grid) =>
+      toMapGrid(
+        grid,
+        sensorReadingsByGrid.get(grid.gridCode) ??
+          (grid.spatialClusterId !== null && grid.spatialClusterId !== undefined
+            ? sensorReadingsBySpatialCluster.get(String(grid.spatialClusterId))
+            : undefined),
+      ),
+    ),
     inspectionPoints: inspectionPoints.map((point) =>
       toMapInspectionPoint(point, sensorByPoint.get(point.pointCode) ?? []),
     ),
@@ -742,7 +849,9 @@ export function fetchLahanMapData(lahanId: string) {
     return fetchMockLahanMapData(lahanId);
   }
 
-  return fetchApi<LahanMapData>(`/lahan/${encodeURIComponent(lahanId)}/map-data`);
+  return fetchApi<LahanMapData>(
+    `/lahan/${encodeURIComponent(lahanId)}/map-data`,
+  );
 }
 
 function formatNumber(value: number | null | undefined, digits = 2) {
@@ -762,15 +871,24 @@ function formatCluster(clusterLabel?: string | null) {
   const label = rawLabel.toLowerCase();
   const title = rawLabel.charAt(0).toUpperCase() + rawLabel.slice(1);
 
+  if (
+    label === "non-tanaman" ||
+    label === "non tanaman" ||
+    label === "non-plant"
+  ) {
+    return "Non-Tanaman";
+  }
+  if (label.includes("kritis")) return "Kritis";
+  if (label.includes("stres") || label.includes("stress")) return "Stres";
+  if (label.includes("sedang")) return "Sedang";
+  if (label.includes("cukup")) return "Cukup";
+  if (label.includes("sehat")) return "Sehat";
   if (label === "hijau") return `Cluster ${title} (Tinggi)`;
   if (label === "green") return "Cluster Hijau (Tinggi)";
   if (label === "kuning") return `Cluster ${title} (Sedang)`;
   if (label === "yellow") return "Cluster Kuning (Sedang)";
   if (label === "merah") return `Cluster ${title} (Rendah)`;
   if (label === "red") return "Cluster Merah (Rendah)";
-  if (label === "non-tanaman" || label === "non tanaman" || label === "non-plant") {
-    return "Non-Tanaman";
-  }
 
   return title;
 }
@@ -797,9 +915,11 @@ export function toNdviTableRow(grid: MapGrid): PhaseTableRow {
     no2: formatNumber(grid.sensor?.no2Ppm, 3),
     temp: formatNumber(grid.sensor?.temperatureC, 1),
     humidity:
-      grid.sensor?.humidityPct === null || grid.sensor?.humidityPct === undefined
+      grid.sensor?.humidityPct === null ||
+      grid.sensor?.humidityPct === undefined
         ? ""
         : `${formatNumber(grid.sensor.humidityPct, 1)}%`,
+    recordedAt: grid.sensor?.recordedAt ?? "",
   };
 }
 
@@ -833,48 +953,30 @@ export function toInspectionTableRow(point: MapInspectionPoint): PhaseTableRow {
     no2: formatNumber(point.latestSensor?.no2Ppm, 3),
     temp: formatNumber(point.latestSensor?.temperatureC, 1),
     humidity:
-      point.latestSensor?.humidityPct === null || point.latestSensor?.humidityPct === undefined
+      point.latestSensor?.humidityPct === null ||
+      point.latestSensor?.humidityPct === undefined
         ? ""
         : `${formatNumber(point.latestSensor.humidityPct, 1)}%`,
   };
 }
 
-export function getGridRectangleStyle(clusterLabel?: string | null, gridColor?: string | null, isPlant?: boolean | null) {
-  const normalizedLabel = (clusterLabel ?? "").toLowerCase();
+export function getGridRectangleStyle(gridColor?: string | null) {
   const normalizedColor = (gridColor ?? "").toLowerCase();
-  const normalized = `${normalizedLabel} ${normalizedColor}`;
 
-  if (isPlant === false || normalized.includes("non")) {
-    return { color: "#64748b", fillColor: "#94a3b8" };
+  if (normalizedColor.includes("red") || normalizedColor.includes("merah")) {
+    return { color: "#dc2626", fillColor: "#ef4444" };
   }
 
-  if (normalizedLabel.includes("kritis") || normalizedLabel.includes("merah")) {
-    return { color: "#e11d48", fillColor: "#fb7185" };
+  if (
+    normalizedColor.includes("yellow") ||
+    normalizedColor.includes("kuning")
+  ) {
+    return { color: "#eab308", fillColor: "#fde047" };
   }
 
-  if (normalizedLabel.includes("stres") || normalizedLabel.includes("stress")) {
-    return { color: "#ea580c", fillColor: "#fb923c" };
-  }
-
-  if (normalizedLabel.includes("sedang") || normalizedLabel.includes("kuning")) {
-    return { color: "#d97706", fillColor: "#fbbf24" };
-  }
-
-  if (normalizedLabel.includes("cukup")) {
-    return { color: "#65a30d", fillColor: "#a3e635" };
-  }
-
-  if (normalizedLabel.includes("sehat") || normalizedLabel.includes("hijau")) {
+  if (normalizedColor.includes("green") || normalizedColor.includes("hijau")) {
     return { color: "#059669", fillColor: "#34d399" };
   }
 
-  if (normalizedColor.includes("red")) {
-    return { color: "#e11d48", fillColor: "#fb7185" };
-  }
-
-  if (normalizedColor.includes("yellow")) {
-    return { color: "#d97706", fillColor: "#fbbf24" };
-  }
-
-  return { color: "#059669", fillColor: "#34d399" };
+  return { color: "#64748b", fillColor: "#94a3b8" };
 }

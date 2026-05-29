@@ -22,6 +22,10 @@ export default function LahanSelector<TOption extends LahanOption>({
 }: LahanSelectorProps<TOption>) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const selectedLabel =
+    value.name && value.name !== value.fieldCode
+      ? `${value.fieldCode} - ${value.name}`
+      : value.fieldCode;
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
@@ -43,9 +47,7 @@ export default function LahanSelector<TOption extends LahanOption>({
           isOpen ? "border-emerald-700 ring-2 ring-emerald-900/20" : "border-slate-200"
         }`}
       >
-        <span className="truncate">
-          {value.fieldCode} - {value.name}
-        </span>
+        <span className="truncate">{selectedLabel}</span>
         <ChevronDown
           className={`h-4 w-4 flex-shrink-0 text-emerald-800 transition-transform ${
             isOpen ? "rotate-180" : ""
@@ -57,6 +59,8 @@ export default function LahanSelector<TOption extends LahanOption>({
         <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 overflow-hidden rounded-2xl border border-emerald-900/10 bg-white p-1.5 shadow-[0_18px_45px_rgba(15,23,42,0.16)]">
           {options.map((option) => {
             const isSelected = option.fieldCode === value.fieldCode;
+            const hasDistinctName =
+              option.name && option.name !== option.fieldCode;
 
             return (
               <button
@@ -76,9 +80,11 @@ export default function LahanSelector<TOption extends LahanOption>({
                   <span className="shrink-0 text-[13px] font-black">
                     {option.fieldCode}
                   </span>
-                  <span className="truncate text-[13px] font-semibold text-slate-500">
-                    {option.name}
-                  </span>
+                  {hasDistinctName && (
+                    <span className="truncate text-[13px] font-semibold text-slate-500">
+                      {option.name}
+                    </span>
+                  )}
                 </span>
                 {isSelected && (
                   <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-emerald-700 text-white">

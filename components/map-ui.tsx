@@ -9,6 +9,7 @@ import {
   Marker,
   Popup,
   ImageOverlay,
+  Pane,
   Polygon,
   Circle,
 } from "react-leaflet";
@@ -141,18 +142,9 @@ function SelectedFeatureMarker({
       }
 
       setAddress("Mencari lokasi...");
-      fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${feature.coordinates[0]}&lon=${feature.coordinates[1]}`,
-      )
-        .then((res) => res.json())
-        .then((data) => {
-          if (data && data.display_name) {
-            setAddress(data.display_name);
-          } else {
-            setAddress("Tidak ada data lokasi di titik ini.");
-          }
-        })
-        .catch(() => setAddress("Gagal mengambil lokasi"));
+      getAddressFromCoordinates(feature.coordinates[0], feature.coordinates[1])
+        .then(setAddress)
+        .catch((error: Error) => setAddress(error.message));
 
       return () => {
         clearTimeout(timer);
@@ -349,22 +341,23 @@ function SelectedFeatureMarker({
                     {[
                       { label: "Mean", value: feature.data.mean, tone: "ndvi" },
                       {
+                        label: "Variance",
+                        value: feature.data.variance,
+                        tone: "spread",
+                      },
+                      {
                         label: "Median",
                         value: feature.data.median,
                         tone: "ndvi",
                       },
-                      { label: "Min", value: feature.data.min, tone: "ndvi" },
                       { label: "P25", value: feature.data.p25, tone: "ndvi" },
+                      { label: "Min", value: feature.data.min, tone: "ndvi" },
+                      { label: "P50", value: feature.data.p50, tone: "ndvi" },
                       { label: "Max", value: feature.data.max, tone: "ndvi" },
                       { label: "P75", value: feature.data.p75, tone: "ndvi" },
                       {
-                        label: "Stddev",
+                        label: "Std Dev",
                         value: feature.data.stddev,
-                        tone: "spread",
-                      },
-                      {
-                        label: "Variance",
-                        value: feature.data.variance,
                         tone: "spread",
                       },
                     ].map((stat) => {
@@ -511,22 +504,23 @@ function SelectedFeatureMarker({
                           tone: "ndvi",
                         },
                         {
+                          label: "Variance",
+                          value: feature.data.variance,
+                          tone: "spread",
+                        },
+                        {
                           label: "Median",
                           value: feature.data.median,
                           tone: "ndvi",
                         },
-                        { label: "Min", value: feature.data.min, tone: "ndvi" },
                         { label: "P25", value: feature.data.p25, tone: "ndvi" },
+                        { label: "Min", value: feature.data.min, tone: "ndvi" },
+                        { label: "P50", value: feature.data.p50, tone: "ndvi" },
                         { label: "Max", value: feature.data.max, tone: "ndvi" },
                         { label: "P75", value: feature.data.p75, tone: "ndvi" },
                         {
-                          label: "Stddev",
+                          label: "Std Dev",
                           value: feature.data.stddev,
-                          tone: "spread",
-                        },
-                        {
-                          label: "Variance",
-                          value: feature.data.variance,
                           tone: "spread",
                         },
                       ].map((stat) => {
@@ -572,64 +566,138 @@ function SelectedFeatureMarker({
                 </div>
 
                 <div className="rounded-xl border border-slate-100 bg-slate-50/70">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setShowFase2SensorStats((current) => !current)
-                    }
-                    className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition hover:bg-sky-50/70"
-                    aria-expanded={showFase2SensorStats}
-                  >
-                    <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-700">
-                      <ThermometerSun className="h-3.5 w-3.5" />
-                      Sensor Lingkungan
+                  {(() => {
+                    const sensorReadings: MapSensorReading[] = Array.isArray(
+                      feature.data?.raw?.sensorReadings,
+                    )
+                      ? feature.data.raw.sensorReadings
+                      : [];
+                    const safeSensorIndex =
+                      sensorReadings.length === 0
+                        ? 0
+                        : Math.min(sensorHistoryIndex, sensorReadings.length - 1);
+                    const activeSensor = sensorReadings[safeSensorIndex] ?? null;
+                    const canShowHistoryNav = sensorReadings.length > 1;
+
+                    return (
+                      <>
+                  <div className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left">
+                    <span>
+                      <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-700">
+                        <ThermometerSun className="h-3.5 w-3.5" />
+                        Sensor Lingkungan
+                      </span>
+                      <span className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                        {canShowHistoryNav && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSensorHistoryIndex((current) =>
+                                Math.min(current + 1, sensorReadings.length - 1),
+                              )
+                            }
+                            disabled={safeSensorIndex >= sensorReadings.length - 1}
+                            className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+                            aria-label="Sensor lebih lama"
+                          >
+                            <ChevronLeft className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        <span>
+                          {formatSensorRecordedAt(
+                            activeSensor?.recordedAt ?? feature.data.recordedAt,
+                          )}
+                        </span>
+                        {canShowHistoryNav && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSensorHistoryIndex((current) =>
+                                  Math.max(current - 1, 0),
+                                )
+                              }
+                              disabled={safeSensorIndex === 0}
+                              className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+                              aria-label="Sensor lebih baru"
+                            >
+                              <ChevronRight className="h-3.5 w-3.5" />
+                            </button>
+                            <span className="rounded-md bg-white px-1.5 py-0.5 text-[9px] font-black text-slate-500">
+                              {safeSensorIndex + 1}/{sensorReadings.length}
+                            </span>
+                          </>
+                        )}
+                      </span>
                     </span>
-                    <ChevronDown
-                      className={`h-4 w-4 text-sky-700 transition-transform ${
-                        showFase2SensorStats ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowFase2SensorStats((current) => !current)
+                      }
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-sky-700 transition hover:bg-sky-50"
+                      aria-expanded={showFase2SensorStats}
+                      aria-label="Tampilkan sensor lingkungan"
+                    >
+                      <ChevronDown
+                        className={`h-4 w-4 transition-transform ${
+                          showFase2SensorStats ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+                  </div>
 
                   {showFase2SensorStats && (
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-slate-100 px-3 pb-2 pt-1.5">
                       {[
                         {
                           label: "Suhu",
-                          value: feature.data.temp
+                          value: activeSensor
+                            ? `${formatSensorNumber(activeSensor.temperatureC, 1)}°C`
+                            : feature.data.temp
                             ? `${feature.data.temp}°C`
                             : "-",
                           color: "text-rose-700",
                         },
                         {
                           label: "Humidity",
-                          value: feature.data.humidity || "-",
+                          value: activeSensor
+                            ? `${formatSensorNumber(activeSensor.humidityPct, 1)}%`
+                            : feature.data.humidity || "-",
                           color: "text-blue-700",
                         },
                         {
                           label: "CO2",
-                          value: feature.data.co2
+                          value: activeSensor
+                            ? `${formatSensorNumber(activeSensor.co2Ppm, 1)} ppm`
+                            : feature.data.co2
                             ? `${feature.data.co2} ppm`
                             : "-",
                           color: "text-emerald-700",
                         },
                         {
                           label: "NH3",
-                          value: feature.data.nh3
+                          value: activeSensor
+                            ? `${formatSensorNumber(activeSensor.nh3Ppm, 3)} ppm`
+                            : feature.data.nh3
                             ? `${feature.data.nh3} ppm`
                             : "-",
                           color: "text-violet-700",
                         },
                         {
                           label: "CO",
-                          value: feature.data.co
+                          value: activeSensor
+                            ? `${formatSensorNumber(activeSensor.coPpm, 3)} ppm`
+                            : feature.data.co
                             ? `${feature.data.co} ppm`
                             : "-",
                           color: "text-slate-700",
                         },
                         {
                           label: "NO2",
-                          value: feature.data.no2
+                          value: activeSensor
+                            ? `${formatSensorNumber(activeSensor.no2Ppm, 3)} ppm`
+                            : feature.data.no2
                             ? `${feature.data.no2} ppm`
                             : "-",
                           color: "text-cyan-700",
@@ -651,6 +719,9 @@ function SelectedFeatureMarker({
                       ))}
                     </div>
                   )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -674,8 +745,8 @@ function SelectedFeatureMarker({
                 const cluster = getClusterStyles(feature.data.cluster);
 
                 return (
-                  <div className="rounded-xl border border-sky-100 bg-sky-50/40 px-3 py-2.5 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.1)]">
-                    <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-sky-100 bg-sky-50/40 px-3 py-2 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.1)]">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                       Cluster
                     </p>
                     <div
@@ -1047,6 +1118,26 @@ interface MapUIProps {
 
 type ImageLayerType = "rgb" | "ndvi";
 
+type ReverseGeocodeResponse = {
+  displayName?: string | null;
+  error?: string;
+};
+
+async function getAddressFromCoordinates(lat: number, lon: number) {
+  const params = new URLSearchParams({
+    lat: lat.toString(),
+    lon: lon.toString(),
+  });
+  const response = await fetch(`/api/reverse-geocode?${params.toString()}`);
+  const data = (await response.json()) as ReverseGeocodeResponse;
+
+  if (!response.ok) {
+    throw new Error(data.error || "Gagal memuat alamat.");
+  }
+
+  return data.displayName || "Tidak ada data lokasi di titik ini.";
+}
+
 function MapSearchOverlay() {
   const map = useMap();
   const [query, setQuery] = useState("");
@@ -1333,9 +1424,17 @@ function CustomLayerControl({
   toggleOverlay: (o: OverlayType) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const handleSelectBaseLayer = (type: MapType) => {
+    setBaseLayer(type);
+    setIsOpen(false);
+  };
+  const handleToggleOverlay = (layer: OverlayType) => {
+    toggleOverlay(layer);
+    setIsOpen(false);
+  };
 
   return (
-    <div className="absolute top-[198px] sm:top-[128px] right-[16px] sm:right-6 z-[500] no-map-click">
+    <div className="absolute top-[198px] sm:top-[128px] right-[16px] sm:right-6 z-[1300] no-map-click">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="w-12 h-12 bg-white rounded-[16px] shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex items-center justify-center hover:bg-gray-50 transition-colors text-[#4B7C63]"
@@ -1345,9 +1444,9 @@ function CustomLayerControl({
       </button>
 
       {isOpen && (
-        <div className="absolute top-0 right-16 w-[calc(100vw-90px)] max-w-[340px] bg-white text-gray-800 rounded-2xl p-3 shadow-2xl z-[500] border border-gray-100">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-[15px] font-semibold text-gray-900">
+        <div className="absolute top-0 right-14 max-h-[calc(100dvh-218px)] w-[calc(100vw-82px)] max-w-[320px] overflow-y-auto rounded-2xl border border-gray-100 bg-white p-2.5 text-gray-800 shadow-2xl sm:right-16 sm:max-h-[calc(100dvh-160px)] sm:max-w-[340px] sm:p-3">
+          <div className="mb-1.5 flex items-center justify-between sm:mb-2">
+            <h3 className="text-[13px] font-semibold text-gray-900 sm:text-[15px]">
               Map type
             </h3>
             <button
@@ -1358,7 +1457,7 @@ function CustomLayerControl({
             </button>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 mb-2">
+          <div className="mb-1.5 grid grid-cols-3 gap-1.5 sm:mb-2 sm:gap-2">
             {[
               {
                 id: "default",
@@ -1379,12 +1478,12 @@ function CustomLayerControl({
               <div
                 key={type.id}
                 className="flex flex-col items-center gap-1 cursor-pointer group"
-                onClick={() => setBaseLayer(type.id as MapType)}
+                onClick={() => handleSelectBaseLayer(type.id as MapType)}
               >
                 <div
-                  className={`w-[60px] h-[60px] rounded-[16px] overflow-hidden p-[2px] transition-all ${baseLayer === type.id ? "ring-2 ring-emerald-500" : "ring-1 ring-gray-200 group-hover:ring-gray-300"}`}
+                  className={`h-12 w-12 overflow-hidden rounded-[14px] p-[2px] transition-all sm:h-[60px] sm:w-[60px] sm:rounded-[16px] ${baseLayer === type.id ? "ring-2 ring-emerald-500" : "ring-1 ring-gray-200 group-hover:ring-gray-300"}`}
                 >
-                  <div className="w-full h-full rounded-[12px] overflow-hidden bg-gray-100">
+                  <div className="h-full w-full overflow-hidden rounded-[10px] bg-gray-100 sm:rounded-[12px]">
                     <img
                       src={type.img}
                       alt={type.label}
@@ -1393,7 +1492,7 @@ function CustomLayerControl({
                   </div>
                 </div>
                 <span
-                  className={`text-[11px] font-semibold ${baseLayer === type.id ? "text-emerald-700" : "text-gray-500"}`}
+                  className={`text-[10px] font-semibold sm:text-[11px] ${baseLayer === type.id ? "text-emerald-700" : "text-gray-500"}`}
                 >
                   {type.label}
                 </span>
@@ -1401,13 +1500,13 @@ function CustomLayerControl({
             ))}
           </div>
 
-          <div className="h-[1px] w-full bg-gray-100 my-2.5" />
+          <div className="my-2 h-[1px] w-full bg-gray-100 sm:my-2.5" />
 
-          <h3 className="text-[15px] font-semibold text-gray-900 mb-1.5">
+          <h3 className="mb-1 text-[13px] font-semibold text-gray-900 sm:mb-1.5 sm:text-[15px]">
             Map details
           </h3>
 
-          <div className="grid grid-cols-4 gap-2 mb-2">
+          <div className="mb-1.5 grid grid-cols-4 gap-1.5 sm:mb-2 sm:gap-2">
             {[
               {
                 id: "rgb",
@@ -1429,21 +1528,21 @@ function CustomLayerControl({
                 <div
                   key={layer.id}
                   className="flex flex-col items-center gap-1 cursor-pointer group relative"
-                  onClick={() => toggleOverlay(layer.id as OverlayType)}
+                  onClick={() => handleToggleOverlay(layer.id as OverlayType)}
                 >
                   <div
-                    className={`w-[60px] h-[60px] rounded-[16px] overflow-hidden p-[2px] transition-all ${activeOverlays.includes(layer.id as OverlayType) ? "ring-2 ring-emerald-500" : "ring-1 ring-gray-200 group-hover:ring-gray-300"}`}
+                    className={`h-12 w-12 overflow-hidden rounded-[14px] p-[2px] transition-all sm:h-[60px] sm:w-[60px] sm:rounded-[16px] ${activeOverlays.includes(layer.id as OverlayType) ? "ring-2 ring-emerald-500" : "ring-1 ring-gray-200 group-hover:ring-gray-300"}`}
                   >
                     <div
-                      className={`w-full h-full rounded-[12px] ${layer.bgClass} flex items-center justify-center shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)]`}
+                      className={`flex h-full w-full items-center justify-center rounded-[10px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] sm:rounded-[12px] ${layer.bgClass}`}
                     >
-                      <span className="font-black tracking-wider text-[12px]">
+                      <span className="text-[10px] font-black tracking-wider sm:text-[12px]">
                         {layer.label}
                       </span>
                     </div>
                   </div>
                   <span
-                    className={`text-[11px] font-semibold ${activeOverlays.includes(layer.id as OverlayType) ? "text-emerald-700" : "text-gray-500"}`}
+                    className={`text-[10px] font-semibold sm:text-[11px] ${activeOverlays.includes(layer.id as OverlayType) ? "text-emerald-700" : "text-gray-500"}`}
                   >
                     {layer.label}
                   </span>
@@ -1452,13 +1551,13 @@ function CustomLayerControl({
             })}
           </div>
 
-          <div className="h-[1px] w-full bg-gray-100 my-2.5" />
+          <div className="my-2 h-[1px] w-full bg-gray-100 sm:my-2.5" />
 
-          <h3 className="text-[15px] font-semibold text-gray-900 mb-1.5">
+          <h3 className="mb-1 text-[13px] font-semibold text-gray-900 sm:mb-1.5 sm:text-[15px]">
             Fase details
           </h3>
 
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
             {[
               {
                 id: "fase1",
@@ -1494,19 +1593,19 @@ function CustomLayerControl({
                 <div
                   key={layer.id}
                   className="flex flex-col items-center gap-1 cursor-pointer group relative"
-                  onClick={() => toggleOverlay(layer.id as OverlayType)}
+                  onClick={() => handleToggleOverlay(layer.id as OverlayType)}
                 >
                   <div
-                    className={`w-[60px] h-[60px] rounded-[16px] overflow-hidden p-[2px] transition-all ${activeOverlays.includes(layer.id as OverlayType) ? "ring-2 ring-emerald-500" : "ring-1 ring-gray-200 group-hover:ring-gray-300"}`}
+                    className={`h-12 w-12 overflow-hidden rounded-[14px] p-[2px] transition-all sm:h-[60px] sm:w-[60px] sm:rounded-[16px] ${activeOverlays.includes(layer.id as OverlayType) ? "ring-2 ring-emerald-500" : "ring-1 ring-gray-200 group-hover:ring-gray-300"}`}
                   >
                     <div
-                      className={`w-full h-full rounded-[12px] ${layer.bgClass} flex items-center justify-center shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)]`}
+                      className={`flex h-full w-full items-center justify-center rounded-[10px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] sm:rounded-[12px] ${layer.bgClass}`}
                     >
-                      <ContentIcon className="w-6 h-6 stroke-[2px]" />
+                      <ContentIcon className="h-5 w-5 stroke-[2px] sm:h-6 sm:w-6" />
                     </div>
                   </div>
                   <span
-                    className={`text-[11px] font-semibold ${activeOverlays.includes(layer.id as OverlayType) ? "text-emerald-700" : "text-gray-500"}`}
+                    className={`text-[10px] font-semibold sm:text-[11px] ${activeOverlays.includes(layer.id as OverlayType) ? "text-emerald-700" : "text-gray-500"}`}
                   >
                     {layer.label}
                   </span>
@@ -1532,6 +1631,14 @@ function panelNumericValue(value: string | undefined) {
 function getClusterStyles(cluster?: string) {
   const normalized = (cluster || "").toLowerCase();
   const label = cluster?.trim() || "-";
+
+  if (/^zona\s+\d+$/i.test(label)) {
+    return {
+      label,
+      chip: "bg-indigo-50 text-indigo-700 border-indigo-200",
+      dot: "bg-indigo-500",
+    };
+  }
 
   if (normalized.includes("non-tanaman") || normalized.includes("non tanaman") || normalized.includes("non-plant")) {
     return {
@@ -2444,20 +2551,9 @@ function MapClickHandler({
       setPos(e.latlng);
       setLoading(true);
       setAddress("Mencari informasi lokasi...");
-      fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${e.latlng.lat}&lon=${e.latlng.lng}`,
-      )
-        .then((res) => res.json())
-        .then((data) => {
-          if (data && data.display_name) {
-            setAddress(data.display_name);
-          } else {
-            setAddress("Tidak ada data lokasi di titik ini.");
-          }
-        })
-        .catch(() => {
-          setAddress("Gagal memuat alamat.");
-        })
+      getAddressFromCoordinates(e.latlng.lat, e.latlng.lng)
+        .then(setAddress)
+        .catch((error: Error) => setAddress(error.message))
         .finally(() => {
           setLoading(false);
         });
@@ -2582,13 +2678,14 @@ function MapClickHandler({
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-slate-100 px-3 pb-2 pt-1.5">
                         {[
                           "Mean",
+                          "Variance",
                           "Median",
-                          "Min",
                           "P25",
+                          "Min",
+                          "P50",
                           "Max",
                           "P75",
-                          "Stddev",
-                          "Variance",
+                          "Std Dev",
                         ].map((label) => (
                           <div
                             key={label}
@@ -2680,13 +2777,14 @@ function MapClickHandler({
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-slate-100 px-3 pb-2 pt-1.5">
                           {[
                             "Mean",
+                            "Variance",
                             "Median",
-                            "Min",
                             "P25",
+                            "Min",
+                            "P50",
                             "Max",
                             "P75",
-                            "Stddev",
-                            "Variance",
+                            "Std Dev",
                           ].map((label) => (
                             <div
                               key={label}
@@ -2814,9 +2912,11 @@ function getImageLayerBounds(layer: MapImageLayer): L.LatLngBoundsExpression {
 function RotatedImageOverlay({
   layer,
   opacity,
+  paneName,
 }: {
   layer: MapImageLayer;
   opacity: number;
+  paneName?: string;
 }) {
   const map = useMap();
 
@@ -2842,7 +2942,11 @@ function RotatedImageOverlay({
     image.style.willChange = "transform";
     image.style.zIndex = "1";
 
-    const pane = map.getPanes().overlayPane;
+    const pane = paneName ? map.getPane(paneName) : map.getPanes().overlayPane;
+    if (!pane) {
+      return;
+    }
+
     pane.appendChild(image);
 
     const update = () => {
@@ -2881,7 +2985,7 @@ function RotatedImageOverlay({
       map.off("move zoom viewreset resize zoomend moveend", update);
       image.remove();
     };
-  }, [layer, map, opacity]);
+  }, [layer, map, opacity, paneName]);
 
   return null;
 }
@@ -2918,20 +3022,34 @@ function LahanImageOverlays({
         rgbLayer &&
         rgbBounds &&
         (rgbLayer.corners ? (
-          <RotatedImageOverlay layer={rgbLayer} opacity={0.78} />
+          <RotatedImageOverlay
+            layer={rgbLayer}
+            opacity={0.78}
+            paneName="lahan-image-pane"
+          />
         ) : (
-          <ImageOverlay url={rgbLayer.url} bounds={rgbBounds} opacity={0.78} />
+          <ImageOverlay
+            url={rgbLayer.url}
+            bounds={rgbBounds}
+            opacity={0.78}
+            pane="lahan-image-pane"
+          />
         ))}
       {activeOverlays.includes("ndvi") &&
         ndviLayer &&
         ndviBounds &&
         (ndviLayer.corners ? (
-          <RotatedImageOverlay layer={ndviLayer} opacity={0.74} />
+          <RotatedImageOverlay
+            layer={ndviLayer}
+            opacity={0.74}
+            paneName="lahan-image-pane"
+          />
         ) : (
           <ImageOverlay
             url={ndviLayer.url}
             bounds={ndviBounds}
             opacity={0.74}
+            pane="lahan-image-pane"
           />
         ))}
     </>
@@ -2939,15 +3057,11 @@ function LahanImageOverlays({
 }
 
 function getInspectionMarkerTone(clusterLabel?: string | null) {
-  if (clusterLabel === "merah") {
-    return { bg: "#e11d48", ring: "rgba(225,29,72,0.22)" };
-  }
-
-  if (clusterLabel === "kuning") {
-    return { bg: "#d97706", ring: "rgba(217,119,6,0.22)" };
-  }
-
-  return { bg: "#059669", ring: "rgba(5,150,105,0.22)" };
+  return {
+    bg: "#047857",
+    ring: "rgba(4,120,87,0.2)",
+    glow: "rgba(4,120,87,0.32)",
+  };
 }
 
 function InspectionPointMarkers({
@@ -2986,16 +3100,21 @@ function InspectionPointMarkers({
       {mapData.inspectionPoints.map((point) => {
         const tone = getInspectionMarkerTone(point.clusterLabel);
         const row = toInspectionTableRow(point);
+        const hasSensor = Boolean(point.latestSensor);
+        const statusColor = hasSensor ? "#22c55e" : "#f59e0b";
+        const statusTitle = hasSensor ? "Sensor tersedia" : "Belum ada sensor";
         const icon = new L.DivIcon({
-          html: `<div class="relative flex h-11 w-11 items-center justify-center">
-            <div class="absolute h-11 w-11 rounded-full" style="background:${tone.ring}"></div>
-            <div class="relative flex h-8 w-8 items-center justify-center rounded-full border-2 border-white text-[11px] font-black text-white shadow-[0_8px_18px_rgba(15,23,42,0.28)]" style="background:${tone.bg}">
-              ${point.pointCode}
+          html: `<div class="relative flex h-12 w-12 items-center justify-center" title="${statusTitle}">
+            <div class="absolute h-12 w-12 rounded-full border border-white/70" style="background:${tone.ring}; box-shadow:0 0 0 4px ${tone.ring};"></div>
+            <div class="absolute h-9 w-9 rounded-full border border-white/40" style="background:${tone.glow};"></div>
+            <div class="relative flex h-9 w-9 items-center justify-center rounded-full border-[2.5px] border-white text-[11px] font-black text-white shadow-[0_8px_20px_rgba(15,23,42,0.35),inset_0_1px_0_rgba(255,255,255,0.25)]" style="background:${tone.bg}">
+              <span class="drop-shadow-sm">${point.pointCode}</span>
+              <span class="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white shadow-[0_2px_6px_rgba(15,23,42,0.3)]" style="background:${statusColor}"></span>
             </div>
           </div>`,
           className: "",
-          iconSize: [44, 44],
-          iconAnchor: [22, 22],
+          iconSize: [48, 48],
+          iconAnchor: [24, 24],
         });
 
         return (
@@ -3065,22 +3184,36 @@ function LahanGridRectangles({
   return (
     <>
       {mapData.grids.map((grid) => {
-        const style = getGridRectangleStyle(
-          grid.ndvi?.clusterLabel,
-          grid.ndvi?.gridColor,
-          grid.ndvi?.isPlant,
-        );
+        const style = getGridRectangleStyle(grid.ndvi?.gridColor);
         const row = toNdviTableRow(grid);
-        const isRepresentedBySelectedInspection =
+        const selectedInspection = selectedFeature?.data?.raw;
+        const selectedInspectionClusterId =
+          selectedFeature?.mode === "inspection" &&
+          selectedInspection &&
+          "clusterId" in selectedInspection
+            ? selectedInspection.clusterId
+            : null;
+        const isInSelectedSpatialCluster =
+          selectedFeature?.mode === "inspection" &&
+          selectedInspectionClusterId !== null &&
+          grid.ndvi?.spatialClusterId !== null &&
+          grid.ndvi?.spatialClusterId !== undefined &&
+          String(grid.ndvi.spatialClusterId) ===
+            String(selectedInspectionClusterId);
+        const isInSelectedRepresentativeCodes =
           selectedFeature?.mode === "inspection" &&
           Array.isArray(selectedFeature.data?.raw?.representativeGridCodes) &&
           selectedFeature.data.raw.representativeGridCodes.includes(
             grid.gridCode,
           );
+        const isRepresentedBySelectedInspection =
+          isInSelectedSpatialCluster || isInSelectedRepresentativeCodes;
+        const hasSelectedInspection = selectedFeature?.mode === "inspection";
 
         return (
           <Polygon
             key={`${mode}-${grid.gridId}`}
+            pane="lahan-grid-pane"
             positions={[
               [grid.corners.topLeft.lat, grid.corners.topLeft.lng],
               [grid.corners.topRight.lat, grid.corners.topRight.lng],
@@ -3088,15 +3221,23 @@ function LahanGridRectangles({
               [grid.corners.bottomLeft.lat, grid.corners.bottomLeft.lng],
             ]}
             pathOptions={{
-              color: style.color,
+              color: isRepresentedBySelectedInspection ? "#f8fafc" : style.color,
               weight: isRepresentedBySelectedInspection ? 3 : 1,
-              opacity: isRepresentedBySelectedInspection ? 1 : 0.85,
+              opacity: isRepresentedBySelectedInspection
+                ? 1
+                : hasSelectedInspection
+                  ? 0.32
+                  : 0.85,
               fillColor: style.fillColor,
               fillOpacity: isRepresentedBySelectedInspection
-                ? 0.36
-                : hasImageOverlay
-                  ? 0.12
-                  : 0.22,
+                ? 0.46
+                : hasSelectedInspection
+                  ? hasImageOverlay
+                    ? 0.04
+                    : 0.08
+                  : hasImageOverlay
+                    ? 0.12
+                    : 0.22,
               bubblingMouseEvents: false,
             }}
             eventHandlers={{
@@ -3506,11 +3647,22 @@ export default function MapUI({
           const representedGridCodes = new Set(
             updatedPoint.representativeGridCodes,
           );
-          const grids = current.grids.map((grid) =>
-            representedGridCodes.has(grid.gridCode)
-              ? { ...grid, sensor: latestSensor }
-              : grid,
-          );
+          const grids = current.grids.map((grid) => {
+            const isRepresentedByCode = representedGridCodes.has(
+              grid.gridCode,
+            );
+            const isRepresentedBySpatialCluster =
+              updatedPoint.clusterId !== null &&
+              updatedPoint.clusterId !== undefined &&
+              grid.ndvi?.spatialClusterId !== null &&
+              grid.ndvi?.spatialClusterId !== undefined &&
+              String(grid.ndvi.spatialClusterId) ===
+                String(updatedPoint.clusterId);
+
+            return isRepresentedByCode || isRepresentedBySpatialCluster
+              ? { ...grid, sensor: latestSensor, sensorReadings }
+              : grid;
+          });
 
           return {
             ...current,
@@ -3702,12 +3854,23 @@ export default function MapUI({
           />
         )}
 
-        <LahanGridRectangles
-          mapData={mapDataQuery.data}
-          activeOverlays={activeOverlays}
-          selectedFeature={focusedFeature}
-          onSelectFeature={setPanelSelectedFeature}
-        />
+        <Pane
+          name="lahan-image-pane"
+          style={{ zIndex: 410, pointerEvents: "none" }}
+        >
+          <LahanImageOverlays
+            layers={imageLayers}
+            activeOverlays={activeOverlays}
+          />
+        </Pane>
+        <Pane name="lahan-grid-pane" style={{ zIndex: 430 }}>
+          <LahanGridRectangles
+            mapData={mapDataQuery.data}
+            activeOverlays={activeOverlays}
+            selectedFeature={focusedFeature}
+            onSelectFeature={setPanelSelectedFeature}
+          />
+        </Pane>
         <InspectionPointMarkers
           mapData={mapDataQuery.data}
           activeOverlays={activeOverlays}
@@ -3736,10 +3899,6 @@ export default function MapUI({
         <MapClickHandler
           activeOverlays={activeOverlays}
           selectedFeature={focusedFeature}
-        />
-        <LahanImageOverlays
-          layers={imageLayers}
-          activeOverlays={activeOverlays}
         />
         <ZoomControl position="topright" />
         <MapSearchOverlay />
