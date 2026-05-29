@@ -3354,6 +3354,26 @@ function parseSensorNumber(value: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function normalizeSensorNumberInput(value: string) {
+  const normalizedDecimal = value.replace(/,/g, ".");
+  let hasDecimal = false;
+
+  return Array.from(normalizedDecimal)
+    .filter((char) => {
+      if (char >= "0" && char <= "9") {
+        return true;
+      }
+
+      if (char === "." && !hasDecimal) {
+        hasDecimal = true;
+        return true;
+      }
+
+      return false;
+    })
+    .join("");
+}
+
 function formatSensorRecordedAt(value?: string | null) {
   if (!value) {
     return "Belum ada data";
@@ -3472,11 +3492,14 @@ function SensorReadingModal({
                     onChange={(event) =>
                       setValues((current) => ({
                         ...current,
-                        [field.key]: event.target.value,
+                        [field.key]: normalizeSensorNumberInput(
+                          event.target.value,
+                        ),
                       }))
                     }
-                    type="number"
+                    type="text"
                     inputMode="decimal"
+                    pattern="[0-9]*[.]?[0-9]*"
                     step={field.step}
                     className="min-w-0 flex-1 bg-transparent text-base font-bold text-slate-900 outline-none [appearance:textfield] sm:text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
