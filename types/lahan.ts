@@ -86,6 +86,19 @@ export type SensorReading = {
   recordedAt: unknown;
 };
 
+export type Sensor7In1Reading = {
+  readingId?: string;
+  pointCode?: string;
+  nitrogenPpm?: number | null;
+  phosphorusPpm?: number | null;
+  potassiumPpm?: number | null;
+  ph?: number | null;
+  ecDsM?: number | null;
+  humidityPct?: number | null;
+  temperatureC?: number | null;
+  recordedAt: unknown;
+};
+
 export type HamaDetection = {
   gridCode?: string | null;
   latitude: number;

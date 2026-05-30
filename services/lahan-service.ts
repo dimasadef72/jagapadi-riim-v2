@@ -21,6 +21,7 @@ import type {
   Lahan,
   LahanCapture,
   LahanGrid,
+  Sensor7In1Reading,
   SensorReading,
 } from "@/types/lahan";
 
@@ -34,6 +35,16 @@ function readSensorReading(snapshot: {
 }): SensorReading {
   return {
     ...readData<SensorReading>(snapshot),
+    readingId: snapshot.id,
+  };
+}
+
+function readSensor7In1Reading(snapshot: {
+  id: string;
+  data: () => unknown;
+}): Sensor7In1Reading {
+  return {
+    ...readData<Sensor7In1Reading>(snapshot),
     readingId: snapshot.id,
   };
 }
@@ -200,6 +211,33 @@ export async function getSensorReadings(
   return snapshot.docs.map(readSensorReading);
 }
 
+export async function getSensor7In1Readings(
+  fieldCode: string,
+  captureId: string,
+  pointCode: string,
+  maxResults = 1,
+) {
+  const db = getFirebaseDb();
+  const snapshot = await getDocs(
+    query(
+      collection(
+        db,
+        "lahan",
+        fieldCode,
+        "captures",
+        captureId,
+        "inspection_points",
+        pointCode,
+        "sensor_7in1_readings",
+      ),
+      orderBy("recordedAt", "desc"),
+      limit(maxResults),
+    ),
+  );
+
+  return snapshot.docs.map(readSensor7In1Reading);
+}
+
 export function subscribeSensorReadings(
   fieldCode: string,
   captureId: string,
@@ -232,6 +270,38 @@ export function subscribeSensorReadings(
   );
 }
 
+export function subscribeSensor7In1Readings(
+  fieldCode: string,
+  captureId: string,
+  pointCode: string,
+  onReadings: (readings: Sensor7In1Reading[]) => void,
+  onError?: (error: Error) => void,
+  maxResults = 10,
+): Unsubscribe {
+  const db = getFirebaseDb();
+
+  return onSnapshot(
+    query(
+      collection(
+        db,
+        "lahan",
+        fieldCode,
+        "captures",
+        captureId,
+        "inspection_points",
+        pointCode,
+        "sensor_7in1_readings",
+      ),
+      orderBy("recordedAt", "desc"),
+      limit(maxResults),
+    ),
+    (snapshot) => {
+      onReadings(snapshot.docs.map(readSensor7In1Reading));
+    },
+    onError,
+  );
+}
+
 export type SensorReadingInput = {
   pointCode: string;
   co2Ppm?: number | null;
@@ -240,6 +310,17 @@ export type SensorReadingInput = {
   no2Ppm?: number | null;
   temperatureC?: number | null;
   humidityPct?: number | null;
+};
+
+export type Sensor7In1ReadingInput = {
+  pointCode: string;
+  nitrogenPpm?: number | null;
+  phosphorusPpm?: number | null;
+  potassiumPpm?: number | null;
+  ph?: number | null;
+  ecDsM?: number | null;
+  humidityPct?: number | null;
+  temperatureC?: number | null;
 };
 
 export async function addSensorReading(
@@ -261,6 +342,36 @@ export async function addSensorReading(
       "inspection_points",
       input.pointCode,
       "sensor_readings",
+      readingId,
+    ),
+    {
+      ...input,
+      recordedAt: Timestamp.fromMillis(recordedAtMillis),
+    },
+  );
+
+  return readingId;
+}
+
+export async function addSensor7In1Reading(
+  fieldCode: string,
+  captureId: string,
+  input: Sensor7In1ReadingInput,
+) {
+  const db = getFirebaseDb();
+  const recordedAtMillis = Date.now();
+  const readingId = recordedAtMillis.toString();
+
+  await setDoc(
+    doc(
+      db,
+      "lahan",
+      fieldCode,
+      "captures",
+      captureId,
+      "inspection_points",
+      input.pointCode,
+      "sensor_7in1_readings",
       readingId,
     ),
     {
@@ -301,6 +412,35 @@ export async function updateSensorReading(
   );
 }
 
+export async function updateSensor7In1Reading(
+  fieldCode: string,
+  captureId: string,
+  pointCode: string,
+  readingId: string,
+  input: Omit<Sensor7In1ReadingInput, "pointCode">,
+) {
+  const db = getFirebaseDb();
+
+  await updateDoc(
+    doc(
+      db,
+      "lahan",
+      fieldCode,
+      "captures",
+      captureId,
+      "inspection_points",
+      pointCode,
+      "sensor_7in1_readings",
+      readingId,
+    ),
+    {
+      ...input,
+      pointCode,
+      updatedAt: Timestamp.fromMillis(Date.now()),
+    },
+  );
+}
+
 export async function deleteSensorReading(
   fieldCode: string,
   captureId: string,
@@ -319,6 +459,29 @@ export async function deleteSensorReading(
       "inspection_points",
       pointCode,
       "sensor_readings",
+      readingId,
+    ),
+  );
+}
+
+export async function deleteSensor7In1Reading(
+  fieldCode: string,
+  captureId: string,
+  pointCode: string,
+  readingId: string,
+) {
+  const db = getFirebaseDb();
+
+  await deleteDoc(
+    doc(
+      db,
+      "lahan",
+      fieldCode,
+      "captures",
+      captureId,
+      "inspection_points",
+      pointCode,
+      "sensor_7in1_readings",
       readingId,
     ),
   );

@@ -63,15 +63,21 @@ import {
   type LahanOption,
   type MapImageLayer,
   type MapInspectionPoint,
+  type MapSensor7In1Reading,
   type MapSensorReading,
   type PhaseTableRow,
+  toMapSensor7In1Reading,
 } from "./map-api";
 import type { SelectedMapFeature } from "./types";
 import {
   addSensorReading,
+  addSensor7In1Reading,
   canUseFirebaseLahanService,
   deleteSensorReading,
+  deleteSensor7In1Reading,
+  subscribeSensor7In1Readings,
   subscribeSensorReadings,
+  updateSensor7In1Reading,
   updateSensorReading,
 } from "@/services/lahan-service";
 
@@ -99,6 +105,7 @@ function SelectedFeatureMarker({
   feature,
   onClose,
   onOpenSensorModal,
+  onOpenSensor7In1Modal,
   autoFocus = true,
 }: {
   feature: SelectedMapFeature;
@@ -107,6 +114,10 @@ function SelectedFeatureMarker({
     feature: SelectedMapFeature,
     reading?: MapSensorReading,
   ) => void;
+  onOpenSensor7In1Modal?: (
+    feature: SelectedMapFeature,
+    reading?: MapSensor7In1Reading,
+  ) => void;
   autoFocus?: boolean;
 }) {
   const markerRef = useRef<L.Marker>(null);
@@ -114,7 +125,12 @@ function SelectedFeatureMarker({
   const [showFase1Stats, setShowFase1Stats] = useState(true);
   const [showFase2NdviStats, setShowFase2NdviStats] = useState(true);
   const [showFase2SensorStats, setShowFase2SensorStats] = useState(true);
+  const [showInspectionSensorStats, setShowInspectionSensorStats] =
+    useState(true);
+  const [showInspectionSensor7In1Stats, setShowInspectionSensor7In1Stats] =
+    useState(true);
   const [sensorHistoryIndex, setSensorHistoryIndex] = useState(0);
+  const [sensor7In1HistoryIndex, setSensor7In1HistoryIndex] = useState(0);
   const map = useMap();
 
   const updatePopupLayout = () => {
@@ -154,6 +170,9 @@ function SelectedFeatureMarker({
 
   useEffect(() => {
     setSensorHistoryIndex(0);
+    setSensor7In1HistoryIndex(0);
+    setShowInspectionSensorStats(true);
+    setShowInspectionSensor7In1Stats(true);
   }, [feature.data?.recordedAt, feature.id, feature.mode]);
 
   useEffect(() => {
@@ -846,6 +865,21 @@ function SelectedFeatureMarker({
                         <button
                           type="button"
                           onClick={() =>
+                            setShowInspectionSensorStats((current) => !current)
+                          }
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-sky-700 transition hover:bg-sky-50"
+                          aria-expanded={showInspectionSensorStats}
+                          aria-label="Tampilkan sensor lingkungan"
+                        >
+                          <ChevronDown
+                            className={`h-4 w-4 transition-transform ${
+                              showInspectionSensorStats ? "rotate-180" : ""
+                            }`}
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
                             activeSensor &&
                             onOpenSensorModal?.(feature, activeSensor)
                           }
@@ -865,76 +899,266 @@ function SelectedFeatureMarker({
                         </button>
                       </span>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-slate-100 px-3 pb-2 pt-1.5">
-                      {[
-                        {
-                          label: "Suhu",
-                          value: activeSensor
-                            ? `${formatSensorNumber(activeSensor.temperatureC, 1)}°C`
-                            : feature.data.temp
-                              ? `${feature.data.temp}°C`
-                              : "-",
-                          color: "text-rose-700",
-                        },
-                        {
-                          label: "Humidity",
-                          value: activeSensor
-                            ? `${formatSensorNumber(activeSensor.humidityPct, 1)}%`
-                            : feature.data.humidity || "-",
-                          color: "text-blue-700",
-                        },
-                        {
-                          label: "CO2",
-                          value: activeSensor
-                            ? `${formatSensorNumber(activeSensor.co2Ppm, 1)} ppm`
-                            : feature.data.co2
-                              ? `${feature.data.co2} ppm`
-                              : "-",
-                          color: "text-emerald-700",
-                        },
-                        {
-                          label: "NH3",
-                          value: activeSensor
-                            ? `${formatSensorNumber(activeSensor.nh3Ppm, 3)} ppm`
-                            : feature.data.nh3
-                              ? `${feature.data.nh3} ppm`
-                              : "-",
-                          color: "text-violet-700",
-                        },
-                        {
-                          label: "CO",
-                          value: activeSensor
-                            ? `${formatSensorNumber(activeSensor.coPpm, 3)} ppm`
-                            : feature.data.co
-                              ? `${feature.data.co} ppm`
-                              : "-",
-                          color: "text-slate-700",
-                        },
-                        {
-                          label: "NO2",
-                          value: activeSensor
-                            ? `${formatSensorNumber(activeSensor.no2Ppm, 3)} ppm`
-                            : feature.data.no2
-                              ? `${feature.data.no2} ppm`
-                              : "-",
-                          color: "text-cyan-700",
-                        },
-                      ].map((stat) => (
-                        <div
-                          key={stat.label}
-                          className="flex items-baseline justify-between gap-3 border-b border-slate-200/70 pb-1 last:border-b-0 [&:nth-last-child(2)]:border-b-0"
-                        >
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            {stat.label}
-                          </span>
-                          <span
-                            className={`text-[12px] font-black tabular-nums ${stat.color}`}
+                    {showInspectionSensorStats && (
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-slate-100 px-3 pb-2 pt-1.5">
+                        {[
+                          {
+                            label: "Suhu",
+                            value: activeSensor
+                              ? `${formatSensorNumber(activeSensor.temperatureC, 1)}°C`
+                              : feature.data.temp
+                                ? `${feature.data.temp}°C`
+                                : "-",
+                            color: "text-rose-700",
+                          },
+                          {
+                            label: "Humidity",
+                            value: activeSensor
+                              ? `${formatSensorNumber(activeSensor.humidityPct, 1)}%`
+                              : feature.data.humidity || "-",
+                            color: "text-blue-700",
+                          },
+                          {
+                            label: "CO2",
+                            value: activeSensor
+                              ? `${formatSensorNumber(activeSensor.co2Ppm, 1)} ppm`
+                              : feature.data.co2
+                                ? `${feature.data.co2} ppm`
+                                : "-",
+                            color: "text-emerald-700",
+                          },
+                          {
+                            label: "NH3",
+                            value: activeSensor
+                              ? `${formatSensorNumber(activeSensor.nh3Ppm, 3)} ppm`
+                              : feature.data.nh3
+                                ? `${feature.data.nh3} ppm`
+                                : "-",
+                            color: "text-violet-700",
+                          },
+                          {
+                            label: "CO",
+                            value: activeSensor
+                              ? `${formatSensorNumber(activeSensor.coPpm, 3)} ppm`
+                              : feature.data.co
+                                ? `${feature.data.co} ppm`
+                                : "-",
+                            color: "text-slate-700",
+                          },
+                          {
+                            label: "NO2",
+                            value: activeSensor
+                              ? `${formatSensorNumber(activeSensor.no2Ppm, 3)} ppm`
+                              : feature.data.no2
+                                ? `${feature.data.no2} ppm`
+                                : "-",
+                            color: "text-cyan-700",
+                          },
+                        ].map((stat) => (
+                          <div
+                            key={stat.label}
+                            className="flex items-baseline justify-between gap-3 border-b border-slate-200/70 pb-1 last:border-b-0 [&:nth-last-child(2)]:border-b-0"
                           >
-                            {stat.value}
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              {stat.label}
+                            </span>
+                            <span
+                              className={`text-[12px] font-black tabular-nums ${stat.color}`}
+                            >
+                              {stat.value}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {(() => {
+                const sensor7In1Readings: MapSensor7In1Reading[] =
+                  Array.isArray(feature.data?.raw?.sensor7In1Readings)
+                    ? feature.data.raw.sensor7In1Readings
+                    : [];
+                const safeSensor7In1Index =
+                  sensor7In1Readings.length === 0
+                    ? 0
+                    : Math.min(
+                        sensor7In1HistoryIndex,
+                        sensor7In1Readings.length - 1,
+                      );
+                const activeSensor7In1 =
+                  sensor7In1Readings[safeSensor7In1Index] ?? null;
+                const canShowSensor7In1HistoryNav =
+                  sensor7In1Readings.length > 1;
+
+                return (
+                  <div className="mt-2 rounded-xl border border-slate-100 bg-slate-50/70">
+                    <div className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left">
+                      <span>
+                        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-800">
+                          <Activity className="h-3.5 w-3.5" />
+                          Sensor 7 in 1
+                        </span>
+                        <span className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                          {canShowSensor7In1HistoryNav && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSensor7In1HistoryIndex((current) =>
+                                  Math.min(
+                                    current + 1,
+                                    sensor7In1Readings.length - 1,
+                                  ),
+                                )
+                              }
+                              disabled={
+                                safeSensor7In1Index >=
+                                sensor7In1Readings.length - 1
+                              }
+                              className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+                              aria-label="Sensor 7 in 1 lebih lama"
+                            >
+                              <ChevronLeft className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          <span>
+                            {formatSensorRecordedAt(
+                              activeSensor7In1?.recordedAt,
+                            )}
                           </span>
-                        </div>
-                      ))}
+                          {canShowSensor7In1HistoryNav && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSensor7In1HistoryIndex((current) =>
+                                    Math.max(current - 1, 0),
+                                  )
+                                }
+                                disabled={safeSensor7In1Index === 0}
+                                className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+                                aria-label="Sensor 7 in 1 lebih baru"
+                              >
+                                <ChevronRight className="h-3.5 w-3.5" />
+                              </button>
+                              <span className="rounded-md bg-white px-1.5 py-0.5 text-[9px] font-black text-slate-500">
+                                {safeSensor7In1Index + 1}/
+                                {sensor7In1Readings.length}
+                              </span>
+                            </>
+                          )}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowInspectionSensor7In1Stats(
+                              (current) => !current,
+                            )
+                          }
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-emerald-800 transition hover:bg-emerald-50"
+                          aria-expanded={showInspectionSensor7In1Stats}
+                          aria-label="Tampilkan sensor 7 in 1"
+                        >
+                          <ChevronDown
+                            className={`h-4 w-4 transition-transform ${
+                              showInspectionSensor7In1Stats ? "rotate-180" : ""
+                            }`}
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            activeSensor7In1 &&
+                            onOpenSensor7In1Modal?.(feature, activeSensor7In1)
+                          }
+                          disabled={!activeSensor7In1?.readingId}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-700 bg-white text-emerald-800 shadow-sm transition hover:border-emerald-800 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-35"
+                          aria-label="Edit sensor 7 in 1"
+                        >
+                          <Pencil className="h-3.5 w-3.5 stroke-[2.5px]" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenSensor7In1Modal?.(feature)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-700 bg-white text-emerald-800 shadow-sm transition hover:border-emerald-800 hover:bg-emerald-50"
+                          aria-label="Catat sensor 7 in 1"
+                        >
+                          <Plus className="h-3.5 w-3.5 stroke-[3px]" />
+                        </button>
+                      </span>
                     </div>
+                    {showInspectionSensor7In1Stats && (
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-slate-100 px-3 pb-2 pt-1.5">
+                        {[
+                          {
+                            label: "N",
+                            value: activeSensor7In1
+                              ? `${formatSensorNumber(activeSensor7In1.nitrogenPpm, 1)} ppm`
+                              : "-",
+                            color: "text-emerald-700",
+                          },
+                          {
+                            label: "EC",
+                            value: activeSensor7In1
+                              ? `${formatSensorNumber(activeSensor7In1.ecDsM, 2)} dS/m`
+                              : "-",
+                            color: "text-cyan-700",
+                          },
+                          {
+                            label: "P",
+                            value: activeSensor7In1
+                              ? `${formatSensorNumber(activeSensor7In1.phosphorusPpm, 1)} ppm`
+                              : "-",
+                            color: "text-lime-700",
+                          },
+                          {
+                            label: "Suhu",
+                            value: activeSensor7In1
+                              ? `${formatSensorNumber(activeSensor7In1.temperatureC, 1)}°C`
+                              : "-",
+                            color: "text-rose-700",
+                          },
+                          {
+                            label: "K",
+                            value: activeSensor7In1
+                              ? `${formatSensorNumber(activeSensor7In1.potassiumPpm, 1)} ppm`
+                              : "-",
+                            color: "text-amber-700",
+                          },
+                          {
+                            label: "Humidity",
+                            value: activeSensor7In1
+                              ? `${formatSensorNumber(activeSensor7In1.humidityPct, 1)}%`
+                              : "-",
+                            color: "text-blue-700",
+                          },
+                          {
+                            label: "PH",
+                            value: activeSensor7In1
+                              ? formatSensorNumber(activeSensor7In1.ph, 2)
+                              : "-",
+                            color: "text-violet-700",
+                          },
+                        ].map((stat) => (
+                          <div
+                            key={stat.label}
+                            className="flex items-baseline justify-between gap-3 border-b border-slate-200/70 pb-1 last:border-b-0"
+                          >
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              {stat.label}
+                            </span>
+                            <span
+                              className={`text-[12px] font-black tabular-nums ${stat.color}`}
+                            >
+                              {stat.value}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -3358,6 +3582,23 @@ type SensorFormValues = {
   no2Ppm: string;
 };
 
+type Sensor7In1ModalTarget = {
+  pointCode: string;
+  mode: "create" | "edit";
+  readingId?: string;
+  initialValues?: Sensor7In1FormValues;
+};
+
+type Sensor7In1FormValues = {
+  nitrogenPpm: string;
+  phosphorusPpm: string;
+  potassiumPpm: string;
+  ph: string;
+  ecDsM: string;
+  humidityPct: string;
+  temperatureC: string;
+};
+
 const emptySensorForm: SensorFormValues = {
   temperatureC: "",
   humidityPct: "",
@@ -3365,6 +3606,16 @@ const emptySensorForm: SensorFormValues = {
   nh3Ppm: "",
   coPpm: "",
   no2Ppm: "",
+};
+
+const emptySensor7In1Form: Sensor7In1FormValues = {
+  nitrogenPpm: "",
+  phosphorusPpm: "",
+  potassiumPpm: "",
+  ph: "",
+  ecDsM: "",
+  humidityPct: "",
+  temperatureC: "",
 };
 
 function sensorReadingToFormValues(
@@ -3395,6 +3646,41 @@ function sensorReadingToFormValues(
       reading.no2Ppm === null || reading.no2Ppm === undefined
         ? ""
         : reading.no2Ppm.toString(),
+  };
+}
+
+function sensor7In1ReadingToFormValues(
+  reading: MapSensor7In1Reading,
+): Sensor7In1FormValues {
+  return {
+    nitrogenPpm:
+      reading.nitrogenPpm === null || reading.nitrogenPpm === undefined
+        ? ""
+        : reading.nitrogenPpm.toString(),
+    phosphorusPpm:
+      reading.phosphorusPpm === null || reading.phosphorusPpm === undefined
+        ? ""
+        : reading.phosphorusPpm.toString(),
+    potassiumPpm:
+      reading.potassiumPpm === null || reading.potassiumPpm === undefined
+        ? ""
+        : reading.potassiumPpm.toString(),
+    ph:
+      reading.ph === null || reading.ph === undefined
+        ? ""
+        : reading.ph.toString(),
+    ecDsM:
+      reading.ecDsM === null || reading.ecDsM === undefined
+        ? ""
+        : reading.ecDsM.toString(),
+    humidityPct:
+      reading.humidityPct === null || reading.humidityPct === undefined
+        ? ""
+        : reading.humidityPct.toString(),
+    temperatureC:
+      reading.temperatureC === null || reading.temperatureC === undefined
+        ? ""
+        : reading.temperatureC.toString(),
   };
 }
 
@@ -3604,6 +3890,149 @@ function SensorReadingModal({
   );
 }
 
+function Sensor7In1ReadingModal({
+  target,
+  isSaving,
+  error,
+  onClose,
+  onSubmit,
+  onDelete,
+}: {
+  target: Sensor7In1ModalTarget | null;
+  isSaving: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSubmit: (values: Sensor7In1FormValues) => Promise<void>;
+  onDelete: () => void;
+}) {
+  const [values, setValues] = useState<Sensor7In1FormValues>(
+    target?.initialValues ?? emptySensor7In1Form,
+  );
+
+  if (!target) {
+    return null;
+  }
+
+  const fields: Array<{
+    key: keyof Sensor7In1FormValues;
+    label: string;
+    unit: string;
+  }> = [
+    { key: "nitrogenPpm", label: "N", unit: "ppm" },
+    { key: "phosphorusPpm", label: "P", unit: "ppm" },
+    { key: "potassiumPpm", label: "K", unit: "ppm" },
+    { key: "ph", label: "PH", unit: "" },
+    { key: "ecDsM", label: "EC", unit: "dS/m" },
+    { key: "humidityPct", label: "Humidity", unit: "%" },
+    { key: "temperatureC", label: "Suhu", unit: "C" },
+  ];
+
+  const hasAnyValue = Object.values(values).some((value) => value.trim());
+  const isEditMode = target.mode === "edit";
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await onSubmit(values);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/40 px-4 py-6 backdrop-blur-[2px]">
+      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">
+              {isEditMode ? "Edit Sensor 7 in 1" : "Catat Sensor 7 in 1"}
+            </p>
+            <h2 className="mt-1 text-lg font-black text-slate-950">
+              Titik {target.pointCode}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200"
+            aria-label="Tutup"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <form
+          onSubmit={handleSubmit}
+          noValidate
+          className="max-h-[78vh] overflow-y-auto px-5 py-4"
+        >
+          <div className="grid grid-cols-2 gap-3">
+            {fields.map((field) => (
+              <label key={field.key} className="block">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  {field.label}
+                </span>
+                <div className="mt-1 flex h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 focus-within:border-emerald-300 focus-within:bg-white">
+                  <input
+                    value={values[field.key]}
+                    onChange={(event) =>
+                      setValues((current) => ({
+                        ...current,
+                        [field.key]: normalizeSensorNumberInput(
+                          event.target.value,
+                        ),
+                      }))
+                    }
+                    type="text"
+                    inputMode="decimal"
+                    className="min-w-0 flex-1 bg-transparent text-base font-bold text-slate-900 outline-none [appearance:textfield] sm:text-sm [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                  {field.unit && (
+                    <span className="ml-2 text-[10px] font-bold uppercase text-slate-400">
+                      {field.unit}
+                    </span>
+                  )}
+                </div>
+              </label>
+            ))}
+          </div>
+
+          {error && (
+            <p className="mt-3 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-[12px] font-bold text-rose-700">
+              {error}
+            </p>
+          )}
+
+          <div className="mt-5 flex items-center justify-end gap-2">
+            {isEditMode && (
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={isSaving}
+                className="mr-auto flex h-10 items-center gap-2 rounded-xl border border-rose-200 px-4 text-[12px] font-black uppercase tracking-wider text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                Hapus
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-10 rounded-xl px-4 text-[12px] font-black uppercase tracking-wider text-slate-500 transition hover:bg-slate-100"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving || !hasAnyValue}
+              className="flex h-10 items-center gap-2 rounded-xl bg-emerald-700 px-4 text-[12px] font-black uppercase tracking-wider text-white shadow-[0_10px_22px_rgba(4,120,87,0.24)] transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+            >
+              {isSaving && <Loader2 className="h-4 w-4 animate-spin" />}
+              Simpan
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function MapUI({
   selectedFeature,
   onCloseFeature,
@@ -3619,6 +4048,14 @@ export default function MapUI({
   const [sensorModalError, setSensorModalError] = useState<string | null>(null);
   const [isSavingSensor, setIsSavingSensor] = useState(false);
   const [showDeleteSensorConfirm, setShowDeleteSensorConfirm] = useState(false);
+  const [sensor7In1ModalTarget, setSensor7In1ModalTarget] =
+    useState<Sensor7In1ModalTarget | null>(null);
+  const [sensor7In1ModalError, setSensor7In1ModalError] = useState<
+    string | null
+  >(null);
+  const [isSavingSensor7In1, setIsSavingSensor7In1] = useState(false);
+  const [showDeleteSensor7In1Confirm, setShowDeleteSensor7In1Confirm] =
+    useState(false);
   const focusedFeature = panelSelectedFeature ?? selectedFeature;
   const shouldLoadMapData =
     Boolean(selectedLahanId) &&
@@ -3796,6 +4233,80 @@ export default function MapUI({
     selectedLahanId,
   ]);
 
+  useEffect(() => {
+    if (
+      !selectedLahanId ||
+      !activeCaptureId ||
+      !activeInspectionPointCode ||
+      !canUseFirebaseLahanService()
+    ) {
+      return;
+    }
+
+    const unsubscribe = subscribeSensor7In1Readings(
+      selectedLahanId,
+      activeCaptureId,
+      activeInspectionPointCode,
+      (readings) => {
+        const sensor7In1Readings = readings
+          .map(toMapSensor7In1Reading)
+          .filter((reading): reading is MapSensor7In1Reading =>
+            Boolean(reading),
+          );
+        const latestSensor7In1 = sensor7In1Readings[0] ?? null;
+        const queryKey = ["map-data", selectedLahanId] as const;
+        const currentMapData = queryClient.getQueryData<LahanMapData>(queryKey);
+        const currentPoint = currentMapData?.inspectionPoints.find(
+          (point) => point.pointCode === activeInspectionPointCode,
+        );
+
+        if (!currentPoint) {
+          return;
+        }
+
+        const updatedPoint: MapInspectionPoint = {
+          ...currentPoint,
+          latestSensor7In1,
+          sensor7In1Readings,
+        };
+
+        queryClient.setQueryData<LahanMapData>(queryKey, (current) => {
+          if (!current) {
+            return current;
+          }
+
+          return {
+            ...current,
+            inspectionPoints: current.inspectionPoints.map((point) =>
+              point.pointCode === activeInspectionPointCode
+                ? updatedPoint
+                : point,
+            ),
+          };
+        });
+
+        const row = toInspectionTableRow(updatedPoint);
+
+        setPanelSelectedFeature({
+          id: updatedPoint.pointCode,
+          mode: "inspection",
+          coordinates: row.coordinates,
+          data: row,
+        });
+      },
+      (error) => {
+        console.error("Sensor 7 in 1 realtime subscription error:", error);
+      },
+    );
+
+    return () => unsubscribe();
+  }, [
+    activeCaptureId,
+    activeInspectionPointCode,
+    queryClient,
+    selectedLahanId,
+  ]);
+
   const toggleOverlay = (id: OverlayType) => {
     setActiveOverlays((prev) => {
       const isActive = prev.includes(id);
@@ -3809,6 +4320,7 @@ export default function MapUI({
     window.localStorage.setItem("selectedLahanId", option.id);
     setPanelSelectedFeature(null);
     setSensorModalTarget(null);
+    setSensor7In1ModalTarget(null);
   };
 
   const handleOpenSensorModal = (
@@ -3824,6 +4336,24 @@ export default function MapUI({
       mode: reading ? "edit" : "create",
       readingId: reading?.readingId,
       initialValues: reading ? sensorReadingToFormValues(reading) : undefined,
+    });
+  };
+
+  const handleOpenSensor7In1Modal = (
+    feature: SelectedMapFeature,
+    reading?: MapSensor7In1Reading,
+  ) => {
+    const point = feature.data?.raw;
+
+    setSensor7In1ModalError(null);
+    setShowDeleteSensor7In1Confirm(false);
+    setSensor7In1ModalTarget({
+      pointCode: point?.pointCode ?? feature.id,
+      mode: reading ? "edit" : "create",
+      readingId: reading?.readingId,
+      initialValues: reading
+        ? sensor7In1ReadingToFormValues(reading)
+        : undefined,
     });
   };
 
@@ -3932,6 +4462,119 @@ export default function MapUI({
     setShowDeleteSensorConfirm(true);
   };
 
+  const handleSubmitSensor7In1Reading = async (
+    values: Sensor7In1FormValues,
+  ) => {
+    if (
+      !sensor7In1ModalTarget ||
+      !selectedLahanId ||
+      !mapDataQuery.data?.lahan.captureId
+    ) {
+      setSensor7In1ModalError("Data titik inspeksi belum lengkap.");
+      return;
+    }
+
+    const payload = {
+      pointCode: sensor7In1ModalTarget.pointCode,
+      nitrogenPpm: parseSensorNumber(values.nitrogenPpm),
+      phosphorusPpm: parseSensorNumber(values.phosphorusPpm),
+      potassiumPpm: parseSensorNumber(values.potassiumPpm),
+      ph: parseSensorNumber(values.ph),
+      ecDsM: parseSensorNumber(values.ecDsM),
+      humidityPct: parseSensorNumber(values.humidityPct),
+      temperatureC: parseSensorNumber(values.temperatureC),
+    };
+
+    const hasAnySensorValue = [
+      payload.nitrogenPpm,
+      payload.phosphorusPpm,
+      payload.potassiumPpm,
+      payload.ph,
+      payload.ecDsM,
+      payload.humidityPct,
+      payload.temperatureC,
+    ].some((value) => value !== null);
+
+    if (!hasAnySensorValue) {
+      setSensor7In1ModalError("Isi minimal satu nilai sensor dulu.");
+      return;
+    }
+
+    setIsSavingSensor7In1(true);
+    setSensor7In1ModalError(null);
+
+    try {
+      if (
+        sensor7In1ModalTarget.mode === "edit" &&
+        sensor7In1ModalTarget.readingId
+      ) {
+        await updateSensor7In1Reading(
+          selectedLahanId,
+          mapDataQuery.data.lahan.captureId,
+          sensor7In1ModalTarget.pointCode,
+          sensor7In1ModalTarget.readingId,
+          {
+            nitrogenPpm: payload.nitrogenPpm,
+            phosphorusPpm: payload.phosphorusPpm,
+            potassiumPpm: payload.potassiumPpm,
+            ph: payload.ph,
+            ecDsM: payload.ecDsM,
+            humidityPct: payload.humidityPct,
+            temperatureC: payload.temperatureC,
+          },
+        );
+      } else {
+        await addSensor7In1Reading(
+          selectedLahanId,
+          mapDataQuery.data.lahan.captureId,
+          payload,
+        );
+      }
+
+      setSensor7In1ModalTarget(null);
+    } catch {
+      setSensor7In1ModalError("Gagal menyimpan data sensor 7 in 1.");
+    } finally {
+      setIsSavingSensor7In1(false);
+    }
+  };
+
+  const handleDeleteSensor7In1Reading = async () => {
+    if (
+      !sensor7In1ModalTarget ||
+      sensor7In1ModalTarget.mode !== "edit" ||
+      !sensor7In1ModalTarget.readingId ||
+      !selectedLahanId ||
+      !mapDataQuery.data?.lahan.captureId
+    ) {
+      setSensor7In1ModalError("Data sensor 7 in 1 belum lengkap.");
+      return;
+    }
+
+    setIsSavingSensor7In1(true);
+    setSensor7In1ModalError(null);
+
+    try {
+      await deleteSensor7In1Reading(
+        selectedLahanId,
+        mapDataQuery.data.lahan.captureId,
+        sensor7In1ModalTarget.pointCode,
+        sensor7In1ModalTarget.readingId,
+      );
+      setShowDeleteSensor7In1Confirm(false);
+      setSensor7In1ModalTarget(null);
+    } catch {
+      setSensor7In1ModalError("Gagal menghapus data sensor 7 in 1.");
+    } finally {
+      setIsSavingSensor7In1(false);
+    }
+  };
+
+  const handleRequestDeleteSensor7In1Reading = () => {
+    setSensor7In1ModalError(null);
+    setShowDeleteSensor7In1Confirm(true);
+  };
+
   return (
     <div className="absolute inset-0 w-full h-full z-[0] pointer-events-auto">
       <MapContainer
@@ -3946,6 +4589,7 @@ export default function MapUI({
           <SelectedFeatureMarker
             feature={focusedFeature}
             onOpenSensorModal={handleOpenSensorModal}
+            onOpenSensor7In1Modal={handleOpenSensor7In1Modal}
             onClose={() => {
               if (panelSelectedFeature) {
                 setPanelSelectedFeature(null);
@@ -3994,6 +4638,7 @@ export default function MapUI({
                 }}
                 onClose={() => {}}
                 onOpenSensorModal={handleOpenSensorModal}
+                onOpenSensor7In1Modal={handleOpenSensor7In1Modal}
                 autoFocus={false}
               />
             );
@@ -4069,6 +4714,27 @@ export default function MapUI({
         onSubmit={handleSubmitSensorReading}
         onDelete={handleRequestDeleteSensorReading}
       />
+      <Sensor7In1ReadingModal
+        key={
+          sensor7In1ModalTarget
+            ? `${sensor7In1ModalTarget.mode}-${sensor7In1ModalTarget.readingId ?? sensor7In1ModalTarget.pointCode}`
+            : "sensor-7-in-1-closed"
+        }
+        target={sensor7In1ModalTarget}
+        isSaving={isSavingSensor7In1}
+        error={sensor7In1ModalError}
+        onClose={() => {
+          if (isSavingSensor7In1) {
+            return;
+          }
+
+          setShowDeleteSensor7In1Confirm(false);
+          setSensor7In1ModalTarget(null);
+          setSensor7In1ModalError(null);
+        }}
+        onSubmit={handleSubmitSensor7In1Reading}
+        onDelete={handleRequestDeleteSensor7In1Reading}
+      />
       {showDeleteSensorConfirm && sensorModalTarget?.mode === "edit" && (
         <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-[2px]">
           <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
@@ -4106,6 +4772,46 @@ export default function MapUI({
           </div>
         </div>
       )}
+      {showDeleteSensor7In1Confirm &&
+        sensor7In1ModalTarget?.mode === "edit" && (
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-[2px]">
+            <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-[0_24px_70px_rgba(15,23,42,0.28)]">
+              <div className="border-b border-slate-100 px-5 py-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-rose-700">
+                  Hapus Sensor 7 in 1
+                </p>
+                <h2 className="mt-1 text-lg font-black text-slate-950">
+                  Hapus data sensor ini?
+                </h2>
+                <p className="mt-2 text-sm font-medium leading-6 text-slate-500">
+                  Data reading 7 in 1 yang dipilih akan dihapus dari riwayat
+                  titik {sensor7In1ModalTarget.pointCode}.
+                </p>
+              </div>
+              <div className="flex items-center justify-end gap-2 px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteSensor7In1Confirm(false)}
+                  disabled={isSavingSensor7In1}
+                  className="h-10 rounded-xl px-4 text-[12px] font-black uppercase tracking-wider text-slate-500 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSensor7In1Reading}
+                  disabled={isSavingSensor7In1}
+                  className="flex h-10 items-center gap-2 rounded-xl bg-rose-700 px-4 text-[12px] font-black uppercase tracking-wider text-white shadow-[0_10px_22px_rgba(190,18,60,0.22)] transition hover:bg-rose-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+                >
+                  {isSavingSensor7In1 && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                  Hapus
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 }

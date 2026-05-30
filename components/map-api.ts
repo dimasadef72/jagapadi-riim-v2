@@ -11,6 +11,7 @@ import {
   getLahan,
   getLahanList,
   getLatestCapture,
+  getSensor7In1Readings,
   getSensorReadings,
 } from "@/services/lahan-service";
 import type {
@@ -19,6 +20,7 @@ import type {
   Lahan,
   LahanCapture,
   LahanGrid,
+  Sensor7In1Reading,
   SensorReading,
 } from "@/types/lahan";
 
@@ -118,6 +120,18 @@ export type MapSensorReading = {
   recordedAt: string;
 };
 
+export type MapSensor7In1Reading = {
+  readingId: string;
+  nitrogenPpm: number | null;
+  phosphorusPpm: number | null;
+  potassiumPpm: number | null;
+  ph: number | null;
+  ecDsM: number | null;
+  humidityPct: number | null;
+  temperatureC: number | null;
+  recordedAt: string;
+};
+
 export type MapInspectionPoint = {
   pointCode: string;
   clusterId: string | number | null;
@@ -127,6 +141,8 @@ export type MapInspectionPoint = {
   representativeGridCodes: string[];
   latestSensor: MapSensorReading | null;
   sensorReadings: MapSensorReading[];
+  latestSensor7In1: MapSensor7In1Reading | null;
+  sensor7In1Readings: MapSensor7In1Reading[];
 };
 
 export type LahanMapData = {
@@ -363,6 +379,30 @@ const mockMapData: LahanMapData = {
           recordedAt: "2026-05-26T07:00:00.000Z",
         },
       ],
+      latestSensor7In1: {
+        readingId: "mock-p1-7in1-1",
+        nitrogenPpm: 22,
+        phosphorusPpm: 14,
+        potassiumPpm: 31,
+        ph: 6.4,
+        ecDsM: 1.2,
+        humidityPct: 46,
+        temperatureC: 29.8,
+        recordedAt: "2026-05-26T08:05:00.000Z",
+      },
+      sensor7In1Readings: [
+        {
+          readingId: "mock-p1-7in1-1",
+          nitrogenPpm: 22,
+          phosphorusPpm: 14,
+          potassiumPpm: 31,
+          ph: 6.4,
+          ecDsM: 1.2,
+          humidityPct: 46,
+          temperatureC: 29.8,
+          recordedAt: "2026-05-26T08:05:00.000Z",
+        },
+      ],
     },
     {
       pointCode: "P2",
@@ -393,6 +433,8 @@ const mockMapData: LahanMapData = {
           recordedAt: "2026-05-26T08:10:00.000Z",
         },
       ],
+      latestSensor7In1: null,
+      sensor7In1Readings: [],
     },
     {
       pointCode: "P3",
@@ -403,6 +445,8 @@ const mockMapData: LahanMapData = {
       representativeGridCodes: ["G-A1", "G-B2", "G-C2"],
       latestSensor: null,
       sensorReadings: [],
+      latestSensor7In1: null,
+      sensor7In1Readings: [],
     },
   ],
   grids: [
@@ -714,13 +758,39 @@ export function toMapSensorReading(
   };
 }
 
+export function toMapSensor7In1Reading(
+  reading: Sensor7In1Reading | null | undefined,
+): MapSensor7In1Reading | null {
+  if (!reading) {
+    return null;
+  }
+
+  return {
+    readingId: reading.readingId ?? "",
+    nitrogenPpm: reading.nitrogenPpm ?? null,
+    phosphorusPpm: reading.phosphorusPpm ?? null,
+    potassiumPpm: reading.potassiumPpm ?? null,
+    ph: reading.ph ?? null,
+    ecDsM: reading.ecDsM ?? null,
+    humidityPct: reading.humidityPct ?? null,
+    temperatureC: reading.temperatureC ?? null,
+    recordedAt: timestampToString(reading.recordedAt) ?? "",
+  };
+}
+
 function toMapInspectionPoint(
   point: InspectionPoint,
   sensorReadings: SensorReading[],
+  sensor7In1Readings: Sensor7In1Reading[] = [],
 ): MapInspectionPoint {
   const mappedSensorReadings = sensorReadings
     .map(toMapSensorReading)
     .filter((reading): reading is MapSensorReading => Boolean(reading));
+  const mappedSensor7In1Readings = sensor7In1Readings
+    .map(toMapSensor7In1Reading)
+    .filter(
+      (reading): reading is MapSensor7In1Reading => Boolean(reading),
+    );
 
   return {
     pointCode: point.pointCode,
@@ -731,6 +801,8 @@ function toMapInspectionPoint(
     representativeGridCodes: point.representativeGridCodes,
     latestSensor: mappedSensorReadings[0] ?? null,
     sensorReadings: mappedSensorReadings,
+    latestSensor7In1: mappedSensor7In1Readings[0] ?? null,
+    sensor7In1Readings: mappedSensor7In1Readings,
   };
 }
 
@@ -772,7 +844,19 @@ async function fetchFirebaseLahanMapData(
       return [point.pointCode, readings] as const;
     }),
   );
+  const inspectionSensor7In1Entries = await Promise.all(
+    inspectionPoints.map(async (point) => {
+      const readings = await getSensor7In1Readings(
+        lahanId,
+        capture.captureId,
+        point.pointCode,
+        10,
+      );
+      return [point.pointCode, readings] as const;
+    }),
+  );
   const sensorByPoint = new Map(inspectionSensorEntries);
+  const sensor7In1ByPoint = new Map(inspectionSensor7In1Entries);
   const sensorReadingsByGrid = new Map<string, SensorReading[]>();
   const sensorReadingsBySpatialCluster = new Map<string, SensorReading[]>();
 
@@ -823,7 +907,11 @@ async function fetchFirebaseLahanMapData(
       ),
     ),
     inspectionPoints: inspectionPoints.map((point) =>
-      toMapInspectionPoint(point, sensorByPoint.get(point.pointCode) ?? []),
+      toMapInspectionPoint(
+        point,
+        sensorByPoint.get(point.pointCode) ?? [],
+        sensor7In1ByPoint.get(point.pointCode) ?? [],
+      ),
     ),
     hama: hamaRows,
   };
