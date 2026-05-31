@@ -56,8 +56,9 @@ export default function LahanSelector<TOption extends LahanOption>({
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 overflow-hidden rounded-2xl border border-emerald-900/10 bg-white p-1.5 shadow-[0_18px_45px_rgba(15,23,42,0.16)]">
-          {options.map((option) => {
+        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-2xl border border-emerald-900/10 bg-white p-1.5 shadow-[0_18px_45px_rgba(15,23,42,0.16)]">
+          <div className="max-h-72 overflow-y-auto overscroll-contain custom-scrollbar pr-1 flex flex-col gap-0.5">
+            {options.map((option) => {
             const isSelected = option.fieldCode === value.fieldCode;
             const hasDistinctName =
               option.name && option.name !== option.fieldCode;
@@ -94,6 +95,7 @@ export default function LahanSelector<TOption extends LahanOption>({
               </button>
             );
           })}
+          </div>
         </div>
       )}
     </div>
