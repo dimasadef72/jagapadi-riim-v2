@@ -296,6 +296,7 @@ export default function Fase1InspectionScreen({
   ).length;
   const previewLayerUrl =
     mapDataQuery.data?.layers.cluster?.url ?? mapDataQuery.data?.layers.ndvi?.url;
+  const isMapLoading = lahanQuery.isLoading || mapDataQuery.isLoading;
   const xlsxGroupHeaders = [
     "Point",
     "Koordinat Inspection",
@@ -540,7 +541,13 @@ export default function Fase1InspectionScreen({
 
         <section className="flex min-h-[260px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_2px_12px_rgba(15,23,42,0.04)]">
           <div className="relative min-h-[260px] flex-1 bg-slate-100">
-            {previewLayerUrl ? (
+            {isMapLoading ? (
+              <div className="absolute inset-0 animate-pulse bg-slate-200">
+                <div className="absolute inset-x-10 top-10 h-6 rounded-full bg-white/50" />
+                <div className="absolute inset-x-16 top-24 h-32 rounded-2xl bg-white/40" />
+                <div className="absolute bottom-10 left-10 h-5 w-1/2 rounded-full bg-white/50" />
+              </div>
+            ) : previewLayerUrl ? (
               <Image
                 src={previewLayerUrl}
                 alt={`Inspection ${selectedLahanOption?.name ?? "lahan"}`}
@@ -575,19 +582,21 @@ export default function Fase1InspectionScreen({
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
+                disabled={isMapLoading}
                 value={query}
                 onChange={(event) => {
                   setQuery(event.target.value);
                   setPage(1);
                 }}
                 placeholder="Cari titik, koordinat, cluster..."
-                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-[13px] font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-100"
+                className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-[13px] font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:text-slate-400"
               />
             </div>
 
             <FilterSelect
               icon={<Filter className="h-4 w-4 text-slate-400" />}
               value={clusterFilter}
+              disabled={isMapLoading}
               onChange={(value) => {
                 setClusterFilter(value);
                 setPage(1);
@@ -599,7 +608,7 @@ export default function Fase1InspectionScreen({
             />
             <button
               onClick={handleDownloadXlsx}
-              disabled={filteredRows.length === 0}
+              disabled={isMapLoading || filteredRows.length === 0}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-700/40 bg-white px-4 text-[13px] font-bold text-emerald-800 shadow-[0_6px_14px_rgba(15,23,42,0.08)] transition hover:bg-emerald-900/5 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300 disabled:shadow-none"
               title="Download XLSX"
             >
@@ -717,7 +726,25 @@ export default function Fase1InspectionScreen({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {pagedRows.map((row) => {
+              {isMapLoading ? (
+                Array.from({ length: pageSize }).map((_, index) => (
+                  <tr key={`loading-${index}`}>
+                    <td colSpan={21} className="px-5 py-4">
+                      <div className="h-10 animate-pulse rounded-xl bg-slate-100" />
+                    </td>
+                  </tr>
+                ))
+              ) : pagedRows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={21}
+                    className="px-5 py-12 text-center text-[13px] font-semibold text-slate-500"
+                  >
+                    Data titik inspection belum tersedia.
+                  </td>
+                </tr>
+              ) : (
+                pagedRows.map((row) => {
                 const point = getInspectionPoint(row);
                 const sensor = point.latestSensor;
                 const sensor7In1 = point.latestSensor7In1;
@@ -795,7 +822,8 @@ export default function Fase1InspectionScreen({
                     </td>
                   </tr>
                 );
-              })}
+              })
+              )}
             </tbody>
           </table>
         </div>

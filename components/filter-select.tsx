@@ -11,6 +11,7 @@ interface FilterOption {
 
 interface FilterSelectProps {
   accent?: "emerald" | "rose";
+  disabled?: boolean;
   icon?: ReactNode;
   onChange: (value: string) => void;
   options: FilterOption[];
@@ -19,6 +20,7 @@ interface FilterSelectProps {
 
 export default function FilterSelect({
   accent = "emerald",
+  disabled = false,
   icon,
   onChange,
   options,
@@ -61,8 +63,11 @@ export default function FilterSelect({
     <div ref={containerRef} className="relative">
       <button
         type="button"
-        onClick={() => setIsOpen((current) => !current)}
-        className={`flex h-10 w-full items-center justify-between gap-2 rounded-xl border bg-slate-50 px-3 text-left text-[13px] font-semibold text-slate-800 outline-none transition hover:border-slate-300 focus:ring-2 ${accentClasses.focus} ${
+        disabled={disabled}
+        onClick={() => {
+          if (!disabled) setIsOpen((current) => !current);
+        }}
+        className={`flex h-10 w-full items-center justify-between gap-2 rounded-xl border bg-slate-50 px-3 text-left text-[13px] font-semibold text-slate-800 outline-none transition hover:border-slate-300 focus:ring-2 disabled:cursor-not-allowed disabled:text-slate-400 ${accentClasses.focus} ${
           isOpen ? accentClasses.open : "border-slate-200"
         }`}
       >
