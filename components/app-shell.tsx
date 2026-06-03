@@ -15,6 +15,7 @@ const appRoutes = new Set([
   "/maps",
   "/overview",
   "/fase-1/ndvi",
+  "/fase-1/inspection",
   "/fase-2/ndvi",
   "/fase-2/hama",
   "/settings",

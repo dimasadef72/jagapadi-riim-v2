@@ -8,6 +8,7 @@ import {
   FileText,
   LayoutDashboard,
   Map,
+  MapPin,
   PanelLeft,
   PanelLeftClose,
   Settings,
@@ -51,6 +52,7 @@ const menus: MenuItem[] = [
     icon: Sprout,
     subMenus: [
       { href: "/fase-1/ndvi", label: "Data Sampling NDVI", icon: Activity },
+      { href: "/fase-1/inspection", label: "Titik Inspection", icon: MapPin },
     ],
   },
   {
@@ -154,7 +156,7 @@ export default function Sidebar({
               <div key={menu.id} className="w-full flex items-start flex-col">
                 {menu.href ? (
                   <Link
-                    href={menu.href as any}
+                    href={menu.href}
                     onClick={closeOnNavigate}
                     title={!isOpen ? menu.label : undefined}
                     className={itemClassName}
@@ -236,7 +238,7 @@ export default function Sidebar({
                         return (
                           <Link
                             key={subMenu.href}
-                            href={subMenu.href as any}
+                            href={subMenu.href}
                             onClick={closeOnNavigate}
                             className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all ${
                               isSubActive

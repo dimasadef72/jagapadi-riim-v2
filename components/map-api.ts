@@ -92,6 +92,8 @@ export type MapGrid = {
     recordedAt: string;
   } | null;
   sensorReadings: MapSensorReading[];
+  latestSensor7In1: MapSensor7In1Reading | null;
+  sensor7In1Readings: MapSensor7In1Reading[];
 };
 
 export type MapHama = {
@@ -308,6 +310,8 @@ function createMockGrid(
         recordedAt: "2026-05-26T08:00:00.000Z",
       },
     ],
+    latestSensor7In1: null,
+    sensor7In1Readings: [],
   };
 }
 
@@ -673,12 +677,18 @@ async function toImageLayer(
 function toMapGrid(
   grid: LahanGrid,
   sensorReadings: SensorReading[] | null | undefined,
+  sensor7In1Readings: Sensor7In1Reading[] | null | undefined = [],
 ): MapGrid {
   const corners = toLayerCorners(grid);
   const bounds = boundsFromCorners(corners);
   const mappedSensorReadings = (sensorReadings ?? [])
     .map(toMapSensorReading)
     .filter((reading): reading is MapSensorReading => Boolean(reading));
+  const mappedSensor7In1Readings = (sensor7In1Readings ?? [])
+    .map(toMapSensor7In1Reading)
+    .filter(
+      (reading): reading is MapSensor7In1Reading => Boolean(reading),
+    );
   const latestSensor = sensorReadings?.[0] ?? null;
 
   return {
@@ -717,6 +727,8 @@ function toMapGrid(
         }
       : null,
     sensorReadings: mappedSensorReadings,
+    latestSensor7In1: mappedSensor7In1Readings[0] ?? null,
+    sensor7In1Readings: mappedSensor7In1Readings,
   };
 }
 
@@ -859,15 +871,26 @@ async function fetchFirebaseLahanMapData(
   const sensor7In1ByPoint = new Map(inspectionSensor7In1Entries);
   const sensorReadingsByGrid = new Map<string, SensorReading[]>();
   const sensorReadingsBySpatialCluster = new Map<string, SensorReading[]>();
+  const sensor7In1ReadingsByGrid = new Map<string, Sensor7In1Reading[]>();
+  const sensor7In1ReadingsBySpatialCluster = new Map<
+    string,
+    Sensor7In1Reading[]
+  >();
 
   inspectionPoints.forEach((point) => {
     const readings = sensorByPoint.get(point.pointCode) ?? [];
+    const sensor7In1Readings = sensor7In1ByPoint.get(point.pointCode) ?? [];
     if (point.clusterId !== null && point.clusterId !== undefined) {
       sensorReadingsBySpatialCluster.set(String(point.clusterId), readings);
+      sensor7In1ReadingsBySpatialCluster.set(
+        String(point.clusterId),
+        sensor7In1Readings,
+      );
     }
 
     point.representativeGridCodes.forEach((gridCode) => {
       sensorReadingsByGrid.set(gridCode, readings);
+      sensor7In1ReadingsByGrid.set(gridCode, sensor7In1Readings);
     });
   });
 
@@ -903,6 +926,12 @@ async function fetchFirebaseLahanMapData(
         sensorReadingsByGrid.get(grid.gridCode) ??
           (grid.spatialClusterId !== null && grid.spatialClusterId !== undefined
             ? sensorReadingsBySpatialCluster.get(String(grid.spatialClusterId))
+            : undefined),
+        sensor7In1ReadingsByGrid.get(grid.gridCode) ??
+          (grid.spatialClusterId !== null && grid.spatialClusterId !== undefined
+            ? sensor7In1ReadingsBySpatialCluster.get(
+                String(grid.spatialClusterId),
+              )
             : undefined),
       ),
     ),

@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Download,
   Filter,
   Grid3X3,
   MapPin,
@@ -16,12 +17,15 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 
 import FilterSelect from "./filter-select";
 import LahanSelector from "./lahan-selector";
 import {
   fetchLahan,
   fetchLahanMapData,
+  getGridRectangleStyle,
+  type MapGrid,
   type PhaseTableRow,
   toNdviTableRow,
 } from "./map-api";
@@ -48,6 +52,13 @@ type SortKey =
   | "no2"
   | "temp"
   | "humidity"
+  | "nitrogen"
+  | "phosphorus"
+  | "potassium"
+  | "ec"
+  | "temp7In1"
+  | "humidity7In1"
+  | "ph"
   | "cluster";
 type SortDirection = "asc" | "desc";
 
@@ -116,6 +127,119 @@ function getClusterSortRank(cluster: string) {
   return 99;
 }
 
+function hexToRgba(hex: string, alpha: number) {
+  const normalized = hex.replace("#", "");
+  const red = Number.parseInt(normalized.slice(0, 2), 16);
+  const green = Number.parseInt(normalized.slice(2, 4), 16);
+  const blue = Number.parseInt(normalized.slice(4, 6), 16);
+
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function getGridSwatchStyle(row: PhaseTableRow) {
+  const grid = row.raw as MapGrid;
+  const style = getGridRectangleStyle(grid.ndvi?.gridColor);
+
+  return {
+    backgroundColor: hexToRgba(style.fillColor, 0.18),
+    borderColor: style.color,
+  };
+}
+
+function formatSensorValue(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
+
+  return value.toString();
+}
+
+function formatXlsxValue(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "-") return "";
+
+  return value;
+}
+
+function getGrid(row: PhaseTableRow) {
+  return row.raw as MapGrid;
+}
+
+function toXlsxRecord(row: PhaseTableRow) {
+  const grid = getGrid(row);
+  const sensor = grid.sensor;
+  const sensor7In1 = grid.latestSensor7In1;
+
+  return [
+    row.grid,
+    row.coordinates[1],
+    row.coordinates[0],
+    formatXlsxValue(row.mean),
+    formatXlsxValue(row.min),
+    formatXlsxValue(row.max),
+    formatXlsxValue(row.stddev),
+    formatXlsxValue(row.median),
+    formatXlsxValue(row.variance),
+    formatXlsxValue(row.p25),
+    formatXlsxValue(row.p50),
+    formatXlsxValue(row.p75),
+    formatXlsxValue(sensor?.temperatureC),
+    formatXlsxValue(sensor?.humidityPct),
+    formatXlsxValue(sensor?.co2Ppm),
+    formatXlsxValue(sensor?.nh3Ppm),
+    formatXlsxValue(sensor?.coPpm),
+    formatXlsxValue(sensor?.no2Ppm),
+    formatXlsxValue(sensor7In1?.nitrogenPpm),
+    formatXlsxValue(sensor7In1?.phosphorusPpm),
+    formatXlsxValue(sensor7In1?.potassiumPpm),
+    formatXlsxValue(sensor7In1?.ecDsM),
+    formatXlsxValue(sensor7In1?.temperatureC),
+    formatXlsxValue(sensor7In1?.humidityPct),
+    formatXlsxValue(sensor7In1?.ph),
+    getClusterLabel(row.cluster),
+  ];
+}
+
+function getSortValue(row: PhaseTableRow, key: SortKey) {
+  const grid = getGrid(row);
+
+  if (key === "cluster") {
+    return getClusterLabel(row.cluster);
+  }
+
+  const ndviSortValues: Partial<Record<SortKey, string | undefined>> = {
+    mean: row.mean,
+    min: row.min,
+    max: row.max,
+    stddev: row.stddev,
+    median: row.median,
+    variance: row.variance,
+    p25: row.p25,
+    p50: row.p50,
+    p75: row.p75,
+  };
+
+  const sensor7In1 = grid.latestSensor7In1;
+  const sensorSortValues: Partial<Record<SortKey, number | null | undefined>> = {
+    co2: grid.sensor?.co2Ppm,
+    nh3: grid.sensor?.nh3Ppm,
+    co: grid.sensor?.coPpm,
+    no2: grid.sensor?.no2Ppm,
+    temp: grid.sensor?.temperatureC,
+    humidity: grid.sensor?.humidityPct,
+    nitrogen: sensor7In1?.nitrogenPpm,
+    phosphorus: sensor7In1?.phosphorusPpm,
+    potassium: sensor7In1?.potassiumPpm,
+    ec: sensor7In1?.ecDsM,
+    temp7In1: sensor7In1?.temperatureC,
+    humidity7In1: sensor7In1?.humidityPct,
+    ph: sensor7In1?.ph,
+  };
+
+  if (key in sensorSortValues) {
+    return sensorSortValues[key] ?? Number.NEGATIVE_INFINITY;
+  }
+
+  return numericValue(ndviSortValues[key]);
+}
+
 export default function Fase2NdviScreen({
   onNavigateToMap,
 }: Fase2NdviScreenProps) {
@@ -181,6 +305,9 @@ export default function Fase2NdviScreen({
 
     const filtered = rows.filter((row) => {
       const cluster = getClusterLabel(row.cluster).toLowerCase();
+      const grid = getGrid(row);
+      const sensor = grid.sensor;
+      const sensor7In1 = grid.latestSensor7In1;
       const searchableText = [
         row.grid,
         row.coordinates[1],
@@ -194,12 +321,19 @@ export default function Fase2NdviScreen({
         row.p25,
         row.p50,
         row.p75,
-        row.co2,
-        row.nh3,
-        row.co,
-        row.no2,
-        row.temp,
-        row.humidity,
+        sensor?.temperatureC,
+        sensor?.humidityPct,
+        sensor?.co2Ppm,
+        sensor?.nh3Ppm,
+        sensor?.coPpm,
+        sensor?.no2Ppm,
+        sensor7In1?.nitrogenPpm,
+        sensor7In1?.phosphorusPpm,
+        sensor7In1?.potassiumPpm,
+        sensor7In1?.ecDsM,
+        sensor7In1?.temperatureC,
+        sensor7In1?.humidityPct,
+        sensor7In1?.ph,
         getClusterLabel(row.cluster),
       ]
         .filter(Boolean)
@@ -215,10 +349,14 @@ export default function Fase2NdviScreen({
     return [...filtered].sort((a, b) => {
       if (!sortKey) return a.grid.localeCompare(b.grid);
 
+      const aValue = getSortValue(a, sortKey);
+      const bValue = getSortValue(b, sortKey);
       const sortValue =
-        sortKey === "cluster"
-          ? getClusterLabel(a.cluster).localeCompare(getClusterLabel(b.cluster))
-          : numericValue(a[sortKey]) - numericValue(b[sortKey]);
+        typeof aValue === "number" && typeof bValue === "number"
+          ? aValue - bValue
+          : String(aValue).localeCompare(String(bValue), undefined, {
+              numeric: true,
+            });
 
       return sortDirection === "asc" ? sortValue : -sortValue;
     });
@@ -233,6 +371,62 @@ export default function Fase2NdviScreen({
     (currentPage - 1) * pageSize,
     currentPage * pageSize,
   );
+  const xlsxGroupHeaders = [
+    "Grid Area",
+    "Center Grid",
+    "",
+    "NDVI",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Sensor Lingkungan",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Sensor 7 in 1",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Cluster",
+  ];
+  const xlsxColumnHeaders = [
+    "",
+    "Long",
+    "Lat",
+    "Mean",
+    "Min",
+    "Max",
+    "Std Dev",
+    "Median",
+    "Variance",
+    "P25",
+    "P50",
+    "P75",
+    "Suhu (°C)",
+    "Humidity (%)",
+    "CO2 (ppm)",
+    "NH3 (ppm)",
+    "CO (ppm)",
+    "NO2 (ppm)",
+    "N (ppm)",
+    "P (ppm)",
+    "K (ppm)",
+    "EC (dS/m)",
+    "Suhu (°C)",
+    "Humidity (%)",
+    "PH",
+    "",
+  ];
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -266,6 +460,28 @@ export default function Fase2NdviScreen({
     </button>
   );
 
+  const renderSortableSensorHeader = (
+    key: SortKey,
+    label: string,
+    unit: string,
+  ) => (
+    <button
+      onClick={() => handleSort(key)}
+      className="mx-auto inline-flex flex-col items-center gap-0.5 font-bold uppercase tracking-wider text-slate-600 transition hover:text-emerald-700"
+      title={`Sort ${label}`}
+    >
+      <span className="inline-flex items-center gap-1">
+        <span>{label}</span>
+        {renderSortIcon(key)}
+      </span>
+      {unit && (
+        <span className="text-[10px] font-semibold normal-case tracking-normal text-slate-400">
+          {unit}
+        </span>
+      )}
+    </button>
+  );
+
   const handleNavigateToMap = (row: PhaseTableRow) => {
     onNavigateToMap({
       id: row.grid,
@@ -273,6 +489,58 @@ export default function Fase2NdviScreen({
       coordinates: row.coordinates,
       data: row,
     });
+  };
+
+  const handleDownloadXlsx = () => {
+    const sheetRows = [
+      xlsxGroupHeaders,
+      xlsxColumnHeaders,
+      ...filteredRows.map((row) => toXlsxRecord(row)),
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
+    const workbook = XLSX.utils.book_new();
+    const date = new Date().toISOString().slice(0, 10);
+    const fieldCode = selectedLahanOption?.fieldCode ?? "lahan";
+
+    worksheet["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+      { s: { r: 0, c: 1 }, e: { r: 0, c: 2 } },
+      { s: { r: 0, c: 3 }, e: { r: 0, c: 11 } },
+      { s: { r: 0, c: 12 }, e: { r: 0, c: 17 } },
+      { s: { r: 0, c: 18 }, e: { r: 0, c: 24 } },
+      { s: { r: 0, c: 25 }, e: { r: 1, c: 25 } },
+    ];
+    worksheet["!cols"] = [
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 10 },
+      { wch: 16 },
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Data Final Fase 2");
+    XLSX.writeFile(workbook, `data-final-fase-2-${fieldCode}-${date}.xlsx`);
   };
 
   const handleNavigateToLahan = () => {
@@ -418,7 +686,7 @@ export default function Fase2NdviScreen({
               Tabel Data Final Fase 2
             </h3>
           </div>
-          <div className="grid gap-2 md:grid-cols-[300px_170px]">
+          <div className="grid gap-2 md:grid-cols-[300px_170px_132px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -444,11 +712,20 @@ export default function Fase2NdviScreen({
                 ...clusterOptions,
               ]}
             />
+            <button
+              onClick={handleDownloadXlsx}
+              disabled={filteredRows.length === 0}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-700/40 bg-white px-4 text-[13px] font-bold text-emerald-800 shadow-[0_6px_14px_rgba(15,23,42,0.08)] transition hover:bg-emerald-900/5 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300 disabled:shadow-none"
+              title="Download XLSX"
+            >
+              <Download className="h-4 w-4" />
+              Download
+            </button>
           </div>
         </div>
 
         <div className="table-scrollbar overflow-x-auto">
-          <table className="w-full min-w-[1760px] border-collapse text-center">
+          <table className="w-full min-w-[2320px] border-collapse text-center">
             <thead>
               <tr className="border-b border-slate-300 bg-slate-100">
                 <th
@@ -473,7 +750,13 @@ export default function Fase2NdviScreen({
                   colSpan={6}
                   className="border-r border-b border-slate-300 px-5 py-3 text-center text-[12px] font-bold uppercase tracking-wider text-slate-700"
                 >
-                  Sensor
+                  Sensor Lingkungan
+                </th>
+                <th
+                  colSpan={7}
+                  className="border-r border-b border-slate-300 px-5 py-3 text-center text-[12px] font-bold uppercase tracking-wider text-slate-700"
+                >
+                  Sensor 7 in 1
                 </th>
                 <th
                   rowSpan={2}
@@ -505,12 +788,6 @@ export default function Fase2NdviScreen({
                   ["p25", "P25"],
                   ["p50", "P50"],
                   ["p75", "P75"],
-                  ["co2", "CO2"],
-                  ["nh3", "NH3"],
-                  ["co", "CO"],
-                  ["no2", "NO2"],
-                  ["temp", "Temp"],
-                  ["humidity", "Humidity"],
                 ].map(([key, label]) => (
                   <th
                     key={key}
@@ -519,10 +796,40 @@ export default function Fase2NdviScreen({
                     {renderSortableHeader(key as SortKey, label)}
                   </th>
                 ))}
+                {[
+                  ["temp", "Suhu", "°C"],
+                  ["humidity", "Humidity", "%"],
+                  ["co2", "CO2", "ppm"],
+                  ["nh3", "NH3", "ppm"],
+                  ["co", "CO", "ppm"],
+                  ["no2", "NO2", "ppm"],
+                  ["nitrogen", "N", "ppm"],
+                  ["phosphorus", "P", "ppm"],
+                  ["potassium", "K", "ppm"],
+                  ["ec", "EC", "dS/m"],
+                  ["temp7In1", "Suhu", "°C"],
+                  ["humidity7In1", "Humidity", "%"],
+                  ["ph", "PH", ""],
+                ].map(([key, label, unit]) => (
+                  <th
+                    key={key}
+                    className="border-r border-slate-300 px-4 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-slate-600"
+                  >
+                    {renderSortableSensorHeader(
+                      key as SortKey,
+                      label,
+                      unit,
+                    )}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {pagedRows.map((row) => {
+                const grid = getGrid(row);
+                const sensor = grid.sensor;
+                const sensor7In1 = grid.latestSensor7In1;
+
                 return (
                   <tr
                     key={row.grid}
@@ -530,7 +837,10 @@ export default function Fase2NdviScreen({
                   >
                     <td className="border-r border-slate-100 px-5 py-4">
                       <div className="flex items-center justify-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-[13px] font-black text-emerald-700">
+                        <div
+                          className="flex h-9 w-9 items-center justify-center rounded-lg border text-[13px] font-black text-slate-900"
+                          style={getGridSwatchStyle(row)}
+                        >
                           {row.grid.split("-")[1]}
                         </div>
                         <span className="font-bold text-slate-900">
@@ -558,12 +868,19 @@ export default function Fase2NdviScreen({
                       row.p25,
                       row.p50,
                       row.p75,
-                      row.co2,
-                      row.nh3,
-                      row.co,
-                      row.no2,
-                      row.temp,
-                      row.humidity,
+                      formatSensorValue(sensor?.temperatureC),
+                      formatSensorValue(sensor?.humidityPct),
+                      formatSensorValue(sensor?.co2Ppm),
+                      formatSensorValue(sensor?.nh3Ppm),
+                      formatSensorValue(sensor?.coPpm),
+                      formatSensorValue(sensor?.no2Ppm),
+                      formatSensorValue(sensor7In1?.nitrogenPpm),
+                      formatSensorValue(sensor7In1?.phosphorusPpm),
+                      formatSensorValue(sensor7In1?.potassiumPpm),
+                      formatSensorValue(sensor7In1?.ecDsM),
+                      formatSensorValue(sensor7In1?.temperatureC),
+                      formatSensorValue(sensor7In1?.humidityPct),
+                      formatSensorValue(sensor7In1?.ph),
                     ].map((value, index) => (
                       <td
                         key={index}

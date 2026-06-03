@@ -125,6 +125,8 @@ function SelectedFeatureMarker({
   const [showFase1Stats, setShowFase1Stats] = useState(true);
   const [showFase2NdviStats, setShowFase2NdviStats] = useState(true);
   const [showFase2SensorStats, setShowFase2SensorStats] = useState(true);
+  const [showFase2Sensor7In1Stats, setShowFase2Sensor7In1Stats] =
+    useState(false);
   const [showInspectionSensorStats, setShowInspectionSensorStats] =
     useState(true);
   const [showInspectionSensor7In1Stats, setShowInspectionSensor7In1Stats] =
@@ -171,6 +173,8 @@ function SelectedFeatureMarker({
   useEffect(() => {
     setSensorHistoryIndex(0);
     setSensor7In1HistoryIndex(0);
+    setShowFase2SensorStats(true);
+    setShowFase2Sensor7In1Stats(false);
     setShowInspectionSensorStats(true);
     setShowInspectionSensor7In1Stats(true);
   }, [feature.data?.recordedAt, feature.id, feature.mode]);
@@ -736,6 +740,175 @@ function SelectedFeatureMarker({
                               <div
                                 key={stat.label}
                                 className="flex items-baseline justify-between gap-3 border-b border-slate-200/70 pb-1 last:border-b-0 [&:nth-last-child(2)]:border-b-0"
+                              >
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                  {stat.label}
+                                </span>
+                                <span
+                                  className={`text-[12px] font-black tabular-nums ${stat.color}`}
+                                >
+                                  {stat.value}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+
+                <div className="rounded-xl border border-slate-100 bg-slate-50/70">
+                  {(() => {
+                    const sensor7In1Readings: MapSensor7In1Reading[] =
+                      Array.isArray(feature.data?.raw?.sensor7In1Readings)
+                        ? feature.data.raw.sensor7In1Readings
+                        : [];
+                    const safeSensor7In1Index =
+                      sensor7In1Readings.length === 0
+                        ? 0
+                        : Math.min(
+                            sensor7In1HistoryIndex,
+                            sensor7In1Readings.length - 1,
+                          );
+                    const activeSensor7In1 =
+                      sensor7In1Readings[safeSensor7In1Index] ?? null;
+                    const canShowSensor7In1HistoryNav =
+                      sensor7In1Readings.length > 1;
+
+                    return (
+                      <>
+                        <div className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left">
+                          <span>
+                            <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-800">
+                              <Activity className="h-3.5 w-3.5" />
+                              Sensor 7 in 1
+                            </span>
+                            <span className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
+                              {canShowSensor7In1HistoryNav && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSensor7In1HistoryIndex((current) =>
+                                      Math.min(
+                                        current + 1,
+                                        sensor7In1Readings.length - 1,
+                                      ),
+                                    )
+                                  }
+                                  disabled={
+                                    safeSensor7In1Index >=
+                                    sensor7In1Readings.length - 1
+                                  }
+                                  className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+                                  aria-label="Sensor 7 in 1 lebih lama"
+                                >
+                                  <ChevronLeft className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                              <span>
+                                {formatSensorRecordedAt(
+                                  activeSensor7In1?.recordedAt,
+                                )}
+                              </span>
+                              {canShowSensor7In1HistoryNav && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setSensor7In1HistoryIndex((current) =>
+                                        Math.max(current - 1, 0),
+                                      )
+                                    }
+                                    disabled={safeSensor7In1Index === 0}
+                                    className="flex h-5 w-5 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+                                    aria-label="Sensor 7 in 1 lebih baru"
+                                  >
+                                    <ChevronRight className="h-3.5 w-3.5" />
+                                  </button>
+                                  <span className="rounded-md bg-white px-1.5 py-0.5 text-[9px] font-black text-slate-500">
+                                    {safeSensor7In1Index + 1}/
+                                    {sensor7In1Readings.length}
+                                  </span>
+                                </>
+                              )}
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowFase2Sensor7In1Stats(
+                                (current) => !current,
+                              )
+                            }
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-emerald-800 transition hover:bg-emerald-50"
+                            aria-expanded={showFase2Sensor7In1Stats}
+                            aria-label="Tampilkan sensor 7 in 1"
+                          >
+                            <ChevronDown
+                              className={`h-4 w-4 transition-transform ${
+                                showFase2Sensor7In1Stats ? "rotate-180" : ""
+                              }`}
+                            />
+                          </button>
+                        </div>
+
+                        {showFase2Sensor7In1Stats && (
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-slate-100 px-3 pb-2 pt-1.5">
+                            {[
+                              {
+                                label: "N",
+                                value: activeSensor7In1
+                                  ? `${formatSensorNumber(activeSensor7In1.nitrogenPpm, 1)} ppm`
+                                  : "-",
+                                color: "text-emerald-700",
+                              },
+                              {
+                                label: "EC",
+                                value: activeSensor7In1
+                                  ? `${formatSensorNumber(activeSensor7In1.ecDsM, 2)} dS/m`
+                                  : "-",
+                                color: "text-cyan-700",
+                              },
+                              {
+                                label: "P",
+                                value: activeSensor7In1
+                                  ? `${formatSensorNumber(activeSensor7In1.phosphorusPpm, 1)} ppm`
+                                  : "-",
+                                color: "text-lime-700",
+                              },
+                              {
+                                label: "Suhu",
+                                value: activeSensor7In1
+                                  ? `${formatSensorNumber(activeSensor7In1.temperatureC, 1)}°C`
+                                  : "-",
+                                color: "text-rose-700",
+                              },
+                              {
+                                label: "K",
+                                value: activeSensor7In1
+                                  ? `${formatSensorNumber(activeSensor7In1.potassiumPpm, 1)} ppm`
+                                  : "-",
+                                color: "text-amber-700",
+                              },
+                              {
+                                label: "Humidity",
+                                value: activeSensor7In1
+                                  ? `${formatSensorNumber(activeSensor7In1.humidityPct, 1)}%`
+                                  : "-",
+                                color: "text-blue-700",
+                              },
+                              {
+                                label: "PH",
+                                value: activeSensor7In1
+                                  ? formatSensorNumber(activeSensor7In1.ph, 2)
+                                  : "-",
+                                color: "text-violet-700",
+                              },
+                            ].map((stat) => (
+                              <div
+                                key={stat.label}
+                                className="flex items-baseline justify-between gap-3 border-b border-slate-200/70 pb-1 last:border-b-0"
                               >
                                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                                   {stat.label}

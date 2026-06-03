@@ -8,54 +8,54 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Download,
   Filter,
-  Grid3X3,
   MapPin,
   MapPinned,
   Search,
+  Waypoints,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
+import { useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 
 import FilterSelect from "./filter-select";
 import LahanSelector from "./lahan-selector";
 import {
   fetchLahan,
   fetchLahanMapData,
-  getGridRectangleStyle,
-  type MapGrid,
+  type MapInspectionPoint,
   type PhaseTableRow,
-  toNdviTableRow,
+  toInspectionTableRow,
 } from "./map-api";
 import RowsPerPageSelect from "./rows-per-page-select";
 import type { SelectedMapFeature } from "./types";
 
-interface Fase1NdviScreenProps {
+interface Fase1InspectionScreenProps {
   onNavigateToMap: (feature: SelectedMapFeature) => void;
 }
 
 type SortKey =
-  | "mean"
-  | "min"
-  | "max"
-  | "stddev"
-  | "median"
-  | "variance"
-  | "p25"
-  | "p50"
-  | "p75"
-  | "cluster";
+  | "point"
+  | "cluster"
+  | "representedCount"
+  | "recordedAt";
 type SortDirection = "asc" | "desc";
-
-function numericValue(value: string | undefined) {
-  return Number(String(value ?? "").replace("%", "")) || 0;
-}
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "-";
   return new Intl.DateTimeFormat("id-ID", { dateStyle: "medium" }).format(
     new Date(value),
   );
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("id-ID", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 function getClusterLabel(cluster: string | undefined) {
@@ -82,33 +82,9 @@ function getClusterLabel(cluster: string | undefined) {
 }
 
 function getClusterClass(cluster: string | undefined) {
-  const normalized = getClusterLabel(cluster).toLowerCase();
-
-  if (normalized === "-") {
-    return "bg-slate-50 text-slate-500 border-slate-100";
-  }
-
-  if (normalized.includes("non-tanaman")) {
-    return "bg-slate-50 text-slate-600 border-slate-200";
-  }
-
-  if (normalized.includes("kritis") || normalized.includes("merah")) {
-    return "bg-rose-50 text-rose-700 border-rose-100";
-  }
-
-  if (normalized.includes("stres")) {
-    return "bg-orange-50 text-orange-700 border-orange-100";
-  }
-
-  if (normalized.includes("sedang") || normalized.includes("kuning")) {
-    return "bg-amber-50 text-amber-700 border-amber-100";
-  }
-
-  if (normalized.includes("cukup")) {
-    return "bg-lime-50 text-lime-700 border-lime-100";
-  }
-
-  return "bg-emerald-50 text-emerald-700 border-emerald-100";
+  return getClusterLabel(cluster) === "-"
+    ? "bg-slate-50 text-slate-500 border-slate-100"
+    : "bg-violet-50 text-violet-700 border-violet-200";
 }
 
 function getClusterSortRank(cluster: string) {
@@ -124,54 +100,107 @@ function getClusterSortRank(cluster: string) {
   return 99;
 }
 
-function hexToRgba(hex: string, alpha: number) {
-  const normalized = hex.replace("#", "");
-  const red = Number.parseInt(normalized.slice(0, 2), 16);
-  const green = Number.parseInt(normalized.slice(2, 4), 16);
-  const blue = Number.parseInt(normalized.slice(4, 6), 16);
+function formatSensorValue(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "-";
 
-  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+  return value.toString();
 }
 
-function getGridSwatchStyle(row: PhaseTableRow) {
-  const grid = row.raw as MapGrid;
-  const style = getGridRectangleStyle(grid.ndvi?.gridColor);
+function formatXlsxValue(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "-") return "";
 
-  return {
-    backgroundColor: hexToRgba(style.fillColor, 0.18),
-    borderColor: style.color,
-  };
+  return value;
 }
 
-export default function Fase1NdviScreen({
+function getInspectionPoint(row: PhaseTableRow) {
+  return row.raw as MapInspectionPoint;
+}
+
+function toXlsxRecord(row: PhaseTableRow) {
+  const point = getInspectionPoint(row);
+  const sensor = point.latestSensor;
+  const sensor7In1 = point.latestSensor7In1;
+
+  return [
+    row.grid,
+    row.coordinates[1],
+    row.coordinates[0],
+    getClusterLabel(row.cluster),
+    formatXlsxValue(sensor?.temperatureC),
+    formatXlsxValue(sensor?.humidityPct),
+    formatXlsxValue(sensor?.co2Ppm),
+    formatXlsxValue(sensor?.nh3Ppm),
+    formatXlsxValue(sensor?.coPpm),
+    formatXlsxValue(sensor?.no2Ppm),
+    formatXlsxValue(sensor7In1?.nitrogenPpm),
+    formatXlsxValue(sensor7In1?.phosphorusPpm),
+    formatXlsxValue(sensor7In1?.potassiumPpm),
+    formatXlsxValue(sensor7In1?.ecDsM),
+    formatXlsxValue(sensor7In1?.temperatureC),
+    formatXlsxValue(sensor7In1?.humidityPct),
+    formatXlsxValue(sensor7In1?.ph),
+    row.representedCount,
+    row.representedGrids,
+    getLatestSensorDate(row),
+  ];
+}
+
+function getLatestSensorDate(row: PhaseTableRow) {
+  const point = getInspectionPoint(row);
+  const dates = [
+    point.latestSensor?.recordedAt,
+    point.latestSensor7In1?.recordedAt,
+  ]
+    .filter(Boolean)
+    .map((value) => new Date(value as string).getTime())
+    .filter((value) => Number.isFinite(value));
+
+  if (dates.length === 0) return "";
+  return new Date(Math.max(...dates)).toISOString();
+}
+
+function sortValue(row: PhaseTableRow, key: SortKey) {
+  if (key === "point") return row.grid;
+  if (key === "cluster") return getClusterSortRank(row.cluster ?? "").toString();
+  if (key === "representedCount") return Number(row.representedCount ?? 0);
+  const latestDate = getLatestSensorDate(row);
+  return latestDate ? new Date(latestDate).getTime() : 0;
+}
+
+export default function Fase1InspectionScreen({
   onNavigateToMap,
-}: Fase1NdviScreenProps) {
+}: Fase1InspectionScreenProps) {
   const [query, setQuery] = useState("");
   const [clusterFilter, setClusterFilter] = useState("semua");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
-  const [selectedLahanId, setSelectedLahanId] = useState<string | null>(null);
+  const [selectedLahanId, setSelectedLahanId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem("selectedLahanId");
+  });
+
   const lahanQuery = useQuery({
     queryKey: ["lahan"],
     queryFn: fetchLahan,
     staleTime: 5 * 60 * 1000,
   });
-  const mapDataQuery = useQuery({
-    queryKey: ["map-data", selectedLahanId],
-    queryFn: () => fetchLahanMapData(selectedLahanId as string),
-    enabled: Boolean(selectedLahanId),
-    staleTime: 60 * 1000,
-  });
-  const lahanOptions = lahanQuery.data ?? [];
+  const lahanOptions = useMemo(() => lahanQuery.data ?? [], [lahanQuery.data]);
   const selectedLahanOption =
     lahanOptions.find((option) => option.id === selectedLahanId) ??
     lahanOptions[0] ??
     null;
+  const activeLahanId = selectedLahanOption?.id ?? selectedLahanId;
+  const mapDataQuery = useQuery({
+    queryKey: ["map-data", activeLahanId],
+    queryFn: () => fetchLahanMapData(activeLahanId as string),
+    enabled: Boolean(activeLahanId),
+    staleTime: 60 * 1000,
+  });
   const selectedLahan = mapDataQuery.data?.lahan;
   const rows = useMemo(
-    () => mapDataQuery.data?.grids.map(toNdviTableRow) ?? [],
+    () => mapDataQuery.data?.inspectionPoints.map(toInspectionTableRow) ?? [],
     [mapDataQuery.data],
   );
   const clusterOptions = useMemo(() => {
@@ -193,57 +222,59 @@ export default function Fase1NdviScreen({
     );
   }, [rows]);
 
-  useEffect(() => {
-    if (selectedLahanId || lahanOptions.length === 0) {
-      return;
-    }
-
-    const savedLahanId = window.localStorage.getItem("selectedLahanId");
-    const savedOption = lahanOptions.find((option) => option.id === savedLahanId);
-    setSelectedLahanId((savedOption ?? lahanOptions[0]).id);
-  }, [lahanOptions, selectedLahanId]);
-
   const filteredRows = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
     const filtered = rows.filter((row) => {
       const cluster = getClusterLabel(row.cluster).toLowerCase();
+      const point = getInspectionPoint(row);
+      const sensor = point.latestSensor;
+      const sensor7In1 = point.latestSensor7In1;
       const searchableText = [
         row.grid,
         row.coordinates[1],
         row.coordinates[0],
-        row.mean,
-        row.min,
-        row.max,
-        row.stddev,
-        row.median,
-        row.variance,
-        row.p25,
-        row.p50,
-        row.p75,
         getClusterLabel(row.cluster),
+        row.representedGrids,
+        row.representedCount,
+        sensor?.temperatureC,
+        sensor?.humidityPct,
+        sensor?.co2Ppm,
+        sensor?.nh3Ppm,
+        sensor?.coPpm,
+        sensor?.no2Ppm,
+        sensor7In1?.nitrogenPpm,
+        sensor7In1?.phosphorusPpm,
+        sensor7In1?.potassiumPpm,
+        sensor7In1?.ecDsM,
+        sensor7In1?.temperatureC,
+        sensor7In1?.humidityPct,
+        sensor7In1?.ph,
+        getLatestSensorDate(row),
       ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
-      const matchesSearch =
-        !normalizedQuery || searchableText.includes(normalizedQuery);
-      const matchesCluster =
-        clusterFilter === "semua" || cluster === clusterFilter;
 
-      return matchesSearch && matchesCluster;
+      return (
+        (!normalizedQuery || searchableText.includes(normalizedQuery)) &&
+        (clusterFilter === "semua" || cluster === clusterFilter)
+      );
     });
 
     return [...filtered].sort((a, b) => {
-      if (!sortKey) {
-        return a.grid.localeCompare(b.grid);
-      }
+      if (!sortKey) return a.grid.localeCompare(b.grid, undefined, { numeric: true });
 
-      const sortValue =
-        sortKey === "cluster"
-          ? getClusterLabel(a.cluster).localeCompare(getClusterLabel(b.cluster))
-          : numericValue(a[sortKey]) - numericValue(b[sortKey]);
-      return sortDirection === "asc" ? sortValue : -sortValue;
+      const aValue = sortValue(a, sortKey);
+      const bValue = sortValue(b, sortKey);
+      const result =
+        typeof aValue === "number" && typeof bValue === "number"
+          ? aValue - bValue
+          : String(aValue).localeCompare(String(bValue), undefined, {
+              numeric: true,
+            });
+
+      return sortDirection === "asc" ? result : -result;
     });
   }, [clusterFilter, query, rows, sortDirection, sortKey]);
 
@@ -256,14 +287,115 @@ export default function Fase1NdviScreen({
     (currentPage - 1) * pageSize,
     currentPage * pageSize,
   );
+  const totalRepresentedGrids = rows.reduce(
+    (total, row) => total + Number(row.representedCount ?? 0),
+    0,
+  );
+  const pointsWithSensor = rows.filter(
+    (row) => row.sensorStatus === "Sudah ada",
+  ).length;
+  const previewLayerUrl =
+    mapDataQuery.data?.layers.cluster?.url ?? mapDataQuery.data?.layers.ndvi?.url;
+  const xlsxGroupHeaders = [
+    "Point",
+    "Koordinat Inspection",
+    "",
+    "Cluster",
+    "Sensor Lingkungan",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Sensor 7 in 1",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Jumlah Grid",
+    "Grid Representatif",
+    "Sensor Terakhir",
+  ];
+  const xlsxColumnHeaders = [
+    "",
+    "Long",
+    "Lat",
+    "",
+    "Suhu (°C)",
+    "Humidity (%)",
+    "CO2 (ppm)",
+    "NH3 (ppm)",
+    "CO (ppm)",
+    "NO2 (ppm)",
+    "N (ppm)",
+    "P (ppm)",
+    "K (ppm)",
+    "EC (dS/m)",
+    "Suhu (°C)",
+    "Humidity (%)",
+    "PH",
+    "",
+    "",
+    "",
+  ];
 
   const handleNavigateToMap = (row: PhaseTableRow) => {
     onNavigateToMap({
       id: row.grid,
-      mode: "fase1",
+      mode: "inspection",
       coordinates: row.coordinates,
       data: row,
     });
+  };
+
+  const handleDownloadXlsx = () => {
+    const sheetRows = [
+      xlsxGroupHeaders,
+      xlsxColumnHeaders,
+      ...filteredRows.map((row) => toXlsxRecord(row)),
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
+    const workbook = XLSX.utils.book_new();
+    const date = new Date().toISOString().slice(0, 10);
+    const fieldCode = selectedLahanOption?.fieldCode ?? "lahan";
+
+    worksheet["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+      { s: { r: 0, c: 1 }, e: { r: 0, c: 2 } },
+      { s: { r: 0, c: 3 }, e: { r: 1, c: 3 } },
+      { s: { r: 0, c: 4 }, e: { r: 0, c: 9 } },
+      { s: { r: 0, c: 10 }, e: { r: 0, c: 16 } },
+      { s: { r: 0, c: 17 }, e: { r: 1, c: 17 } },
+      { s: { r: 0, c: 18 }, e: { r: 1, c: 18 } },
+      { s: { r: 0, c: 19 }, e: { r: 1, c: 19 } },
+    ];
+    worksheet["!cols"] = [
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 28 },
+      { wch: 24 },
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Titik Inspection");
+    XLSX.writeFile(workbook, `titik-inspection-${fieldCode}-${date}.xlsx`);
   };
 
   const handleNavigateToLahan = () => {
@@ -283,9 +415,7 @@ export default function Fase1NdviScreen({
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
-      setSortDirection((currentDirection) =>
-        currentDirection === "asc" ? "desc" : "asc",
-      );
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
     } else {
       setSortKey(key);
       setSortDirection("desc");
@@ -295,10 +425,8 @@ export default function Fase1NdviScreen({
   };
 
   const renderSortIcon = (key: SortKey) => {
-    if (sortKey !== key) {
+    if (sortKey !== key)
       return <ArrowUpDown className="h-3 w-3 text-slate-400" />;
-    }
-
     return sortDirection === "asc" ? (
       <ArrowUp className="h-3 w-3 text-emerald-600" />
     ) : (
@@ -323,12 +451,12 @@ export default function Fase1NdviScreen({
         <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">
           Fase 1:{" "}
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500">
-            Data Sampling NDVI
+            Titik Inspection
           </span>
         </h2>
         <p className="max-w-3xl text-[15px] leading-relaxed text-slate-500">
-          Pilih lahan terlebih dahulu, lalu lihat daftar grid dan hasil NDVI
-          awal milik lahan tersebut.
+          Daftar titik inspection hasil clusterisasi NDVI beserta grid
+          representatif dan status pembacaan sensor.
         </p>
       </div>
 
@@ -375,9 +503,16 @@ export default function Fase1NdviScreen({
           <div className="grid grid-cols-2 gap-3">
             {[
               { label: "Kode Lahan", value: selectedLahanOption?.fieldCode ?? "-" },
-              { label: "Nama Lahan", value: selectedLahanOption?.name ?? "-" },
-              { label: "Total Grid", value: `${rows.length} Grid` },
+              { label: "Titik Inspection", value: `${rows.length} Titik` },
+              { label: "Grid Terwakili", value: `${totalRepresentedGrids} Grid` },
+              { label: "Sensor Terisi", value: `${pointsWithSensor} Titik` },
               { label: "Captured At", value: formatDate(selectedLahan?.capturedAt) },
+              {
+                label: "Lokasi Lahan",
+                value: selectedLahan
+                  ? `${selectedLahan.center.lng.toFixed(5)}, ${selectedLahan.center.lat.toFixed(5)}`
+                  : "-",
+              },
             ].map((item) => (
               <div
                 key={item.label}
@@ -393,43 +528,33 @@ export default function Fase1NdviScreen({
             ))}
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Lokasi Lahan
-              </p>
-              <p className="mt-1 text-[13px] font-black text-slate-800">
-                {selectedLahan
-                  ? `${selectedLahan.center.lng.toFixed(5)}, ${selectedLahan.center.lat.toFixed(5)}`
-                  : "-"}
-              </p>
-            </div>
-            <button
-              onClick={handleNavigateToLahan}
-              disabled={!selectedLahan}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-700/40 bg-white text-emerald-800 shadow-[0_6px_14px_rgba(15,23,42,0.12)] transition hover:bg-emerald-900/5"
-              title="Lihat lokasi lahan"
-            >
-              <MapPin className="h-4 w-4" />
-            </button>
-          </div>
+          <button
+            onClick={handleNavigateToLahan}
+            disabled={!selectedLahan}
+            className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-emerald-700/40 bg-white text-[13px] font-bold text-emerald-800 shadow-[0_6px_14px_rgba(15,23,42,0.08)] transition hover:bg-emerald-900/5 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300"
+          >
+            <MapPin className="h-4 w-4" />
+            Lihat Lahan di Peta
+          </button>
         </section>
 
         <section className="flex min-h-[260px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_2px_12px_rgba(15,23,42,0.04)]">
           <div className="relative min-h-[260px] flex-1 bg-slate-100">
-            {mapDataQuery.data?.layers.ndvi?.url ? (
-              <img
-                src={mapDataQuery.data.layers.ndvi.url}
-                alt={`NDVI ${selectedLahanOption?.name ?? "lahan"}`}
-                className="absolute inset-0 h-full w-full object-cover"
+            {previewLayerUrl ? (
+              <Image
+                src={previewLayerUrl}
+                alt={`Inspection ${selectedLahanOption?.name ?? "lahan"}`}
+                fill
+                unoptimized
+                className="object-cover"
               />
             ) : (
               <div className="flex h-full items-center justify-center text-[13px] font-semibold text-slate-500">
-                NDVI lahan belum tersedia.
+                Layer inspection belum tersedia.
               </div>
             )}
             <div className="absolute left-4 top-4 rounded-xl border border-white/40 bg-white/90 px-3 py-2 text-[11px] font-black uppercase tracking-widest text-emerald-700 shadow-sm backdrop-blur">
-              NDVI Lahan
+              Cluster & Titik Inspection
             </div>
           </div>
         </section>
@@ -439,14 +564,14 @@ export default function Fase1NdviScreen({
         <div className="flex flex-col gap-3 border-b border-slate-100 p-5 md:flex-row md:items-center md:justify-between">
           <div>
             <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-emerald-700">
-              <Grid3X3 className="h-4 w-4" />
-              Grid dalam lahan
+              <Waypoints className="h-4 w-4" />
+              Inspection point
             </div>
             <h3 className="mt-1 text-[17px] font-bold text-slate-900">
-              Tabel NDVI Fase 1
+              Tabel Titik Inspection Fase 1
             </h3>
           </div>
-          <div className="grid gap-2 md:grid-cols-[280px_170px]">
+          <div className="grid gap-2 md:grid-cols-[280px_170px_132px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -455,7 +580,7 @@ export default function Fase1NdviScreen({
                   setQuery(event.target.value);
                   setPage(1);
                 }}
-                placeholder="Cari grid, koordinat, NDVI, cluster..."
+                placeholder="Cari titik, koordinat, cluster..."
                 className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-[13px] font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-100"
               />
             </div>
@@ -472,36 +597,69 @@ export default function Fase1NdviScreen({
                 ...clusterOptions,
               ]}
             />
+            <button
+              onClick={handleDownloadXlsx}
+              disabled={filteredRows.length === 0}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-700/40 bg-white px-4 text-[13px] font-bold text-emerald-800 shadow-[0_6px_14px_rgba(15,23,42,0.08)] transition hover:bg-emerald-900/5 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300 disabled:shadow-none"
+              title="Download XLSX"
+            >
+              <Download className="h-4 w-4" />
+              Download
+            </button>
           </div>
         </div>
 
         <div className="table-scrollbar overflow-x-auto">
-          <table className="w-full min-w-[1320px] border-collapse text-center">
+          <table className="w-full min-w-[2200px] border-collapse text-center">
             <thead>
               <tr className="border-b border-slate-300 bg-slate-100">
                 <th
                   rowSpan={2}
                   className="border-r border-slate-300 px-5 py-4 text-center text-[12px] font-bold uppercase tracking-wider text-slate-700"
                 >
-                  Grid Area
+                  {renderSortableHeader("point", "Point")}
                 </th>
                 <th
                   colSpan={2}
                   className="border-r border-b border-slate-300 px-5 py-3 text-center text-[12px] font-bold uppercase tracking-wider text-slate-700"
                 >
-                  Center Grid
+                  Koordinat Inspection
                 </th>
                 <th
-                  colSpan={9}
+                  rowSpan={2}
+                  className="min-w-[150px] border-r border-slate-300 px-5 py-4 text-center text-[12px] font-bold uppercase tracking-wider text-slate-700"
+                >
+                  {renderSortableHeader("cluster", "Cluster")}
+                </th>
+                <th
+                  colSpan={6}
                   className="border-r border-b border-slate-300 px-5 py-3 text-center text-[12px] font-bold uppercase tracking-wider text-slate-700"
                 >
-                  NDVI
+                  Sensor Lingkungan
+                </th>
+                <th
+                  colSpan={7}
+                  className="border-r border-b border-slate-300 px-5 py-3 text-center text-[12px] font-bold uppercase tracking-wider text-slate-700"
+                >
+                  Sensor 7 in 1
                 </th>
                 <th
                   rowSpan={2}
                   className="border-r border-slate-300 px-5 py-4 text-center text-[12px] font-bold uppercase tracking-wider text-slate-700"
                 >
-                  {renderSortableHeader("cluster", "Cluster")}
+                  {renderSortableHeader("representedCount", "Jumlah Grid")}
+                </th>
+                <th
+                  rowSpan={2}
+                  className="border-r border-slate-300 px-5 py-4 text-center text-[12px] font-bold uppercase tracking-wider text-slate-700"
+                >
+                  Grid Representatif
+                </th>
+                <th
+                  rowSpan={2}
+                  className="border-r border-slate-300 px-5 py-4 text-center text-[12px] font-bold uppercase tracking-wider text-slate-700"
+                >
+                  {renderSortableHeader("recordedAt", "Sensor Terakhir")}
                 </th>
                 <th
                   rowSpan={2}
@@ -518,44 +676,62 @@ export default function Fase1NdviScreen({
                   Lat
                 </th>
                 {[
-                  ["mean", "Mean"],
-                  ["min", "Min"],
-                  ["max", "Max"],
-                  ["stddev", "Std Dev"],
-                  ["median", "Median"],
-                  ["variance", "Variance"],
-                  ["p25", "P25"],
-                  ["p50", "P50"],
-                  ["p75", "P75"],
-                ].map(([key, label]) => (
-                  <th
-                    key={key}
-                    className="border-r border-slate-300 px-4 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-slate-600"
-                  >
-                    {renderSortableHeader(key as SortKey, label)}
-                  </th>
-                ))}
+                  ["Suhu", "°C"],
+                  ["Humidity", "%"],
+                  ["CO2", "ppm"],
+                  ["NH3", "ppm"],
+                  ["CO", "ppm"],
+                  ["NO2", "ppm"],
+                ].map(([label, unit]) => (
+                    <th
+                      key={`env-${label}`}
+                      className="border-r border-slate-300 px-4 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-slate-600"
+                    >
+                      <span className="block">{label}</span>
+                      <span className="mt-0.5 block text-[10px] font-semibold normal-case tracking-normal text-slate-400">
+                        {unit}
+                      </span>
+                    </th>
+                  ))}
+                {[
+                  ["N", "ppm"],
+                  ["P", "ppm"],
+                  ["K", "ppm"],
+                  ["EC", "dS/m"],
+                  ["Suhu", "°C"],
+                  ["Humidity", "%"],
+                  ["PH", ""],
+                ].map(([label, unit]) => (
+                    <th
+                      key={`soil-${label}`}
+                      className="border-r border-slate-300 px-4 py-2.5 text-center text-[11px] font-bold uppercase tracking-wider text-slate-600"
+                    >
+                      <span className="block">{label}</span>
+                      {unit && (
+                        <span className="mt-0.5 block text-[10px] font-semibold normal-case tracking-normal text-slate-400">
+                          {unit}
+                        </span>
+                      )}
+                    </th>
+                  ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {pagedRows.map((row) => {
+                const point = getInspectionPoint(row);
+                const sensor = point.latestSensor;
+                const sensor7In1 = point.latestSensor7In1;
+                const latestSensorDate = getLatestSensorDate(row);
+
                 return (
                   <tr
                     key={row.grid}
                     className="group transition-colors hover:bg-slate-50"
                   >
                     <td className="border-r border-slate-100 px-5 py-4">
-                      <div className="flex items-center justify-center gap-3">
-                        <div
-                          className="flex h-9 w-9 items-center justify-center rounded-lg border text-[13px] font-black text-slate-900"
-                          style={getGridSwatchStyle(row)}
-                        >
-                          {row.grid.split("-")[1]}
-                        </div>
-                        <span className="font-bold text-slate-900">
-                          {row.grid}
-                        </span>
-                      </div>
+                      <span className="font-bold text-slate-900">
+                        {row.grid}
+                      </span>
                     </td>
                     <td className="border-r border-slate-100 px-4 py-4 text-center text-[13px] font-semibold text-slate-600">
                       {row.coordinates[1].toFixed(5)}
@@ -563,34 +739,50 @@ export default function Fase1NdviScreen({
                     <td className="border-r border-slate-100 px-4 py-4 text-center text-[13px] font-semibold text-slate-600">
                       {row.coordinates[0].toFixed(5)}
                     </td>
-                    <td className="border-r border-slate-100 px-4 py-4 text-center">
-                      <span className="inline-flex min-w-[56px] justify-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[13px] font-black text-slate-800">
-                        {row.mean}
+                    <td className="min-w-[150px] border-r border-slate-100 px-5 py-4 text-center">
+                      <span
+                        className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-bold ${getClusterClass(row.cluster)}`}
+                      >
+                        {getClusterLabel(row.cluster) !== "-" && (
+                          <span className="h-2 w-2 rounded-full bg-violet-600" />
+                        )}
+                        {getClusterLabel(row.cluster)}
                       </span>
                     </td>
                     {[
-                      row.min,
-                      row.max,
-                      row.stddev,
-                      row.median,
-                      row.variance,
-                      row.p25,
-                      row.p50,
-                      row.p75,
+                      formatSensorValue(sensor?.temperatureC),
+                      formatSensorValue(sensor?.humidityPct),
+                      formatSensorValue(sensor?.co2Ppm),
+                      formatSensorValue(sensor?.nh3Ppm),
+                      formatSensorValue(sensor?.coPpm),
+                      formatSensorValue(sensor?.no2Ppm),
+                      formatSensorValue(sensor7In1?.nitrogenPpm),
+                      formatSensorValue(sensor7In1?.phosphorusPpm),
+                      formatSensorValue(sensor7In1?.potassiumPpm),
+                      formatSensorValue(sensor7In1?.ecDsM),
+                      formatSensorValue(sensor7In1?.temperatureC),
+                      formatSensorValue(sensor7In1?.humidityPct),
+                      formatSensorValue(sensor7In1?.ph),
                     ].map((value, index) => (
                       <td
-                        key={index}
+                        key={`${row.grid}-sensor-${index}`}
                         className="border-r border-slate-100 px-4 py-4 text-center text-[13px] font-semibold text-slate-600"
                       >
                         {value}
                       </td>
                     ))}
                     <td className="border-r border-slate-100 px-5 py-4 text-center">
-                      <span
-                        className={`inline-flex rounded-lg border px-3 py-1.5 text-xs font-bold ${getClusterClass(row.cluster)}`}
-                      >
-                        {getClusterLabel(row.cluster)}
+                      <span className="inline-flex min-w-[54px] justify-center rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[13px] font-black text-slate-800">
+                        {row.representedCount ?? "0"}
                       </span>
+                    </td>
+                    <td className="border-r border-slate-100 px-5 py-4 text-left text-[13px] font-semibold text-slate-600">
+                      <span className="line-clamp-2">
+                        {row.representedGrids || "-"}
+                      </span>
+                    </td>
+                    <td className="border-r border-slate-100 px-5 py-4 text-center text-[13px] font-semibold text-slate-600">
+                      {formatDateTime(latestSensorDate)}
                     </td>
                     <td className="px-5 py-4 text-center">
                       <button
