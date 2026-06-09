@@ -8,6 +8,7 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Download,
   Filter,
   Grid3X3,
   MapPin,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 
 import FilterSelect from "./filter-select";
 import LahanSelector from "./lahan-selector";
@@ -143,6 +145,30 @@ function getGridSwatchStyle(row: PhaseTableRow) {
   };
 }
 
+function formatXlsxValue(value: number | string | null | undefined) {
+  if (value === null || value === undefined || value === "-") return "";
+
+  return value;
+}
+
+function toXlsxRecord(row: PhaseTableRow) {
+  return [
+    row.grid,
+    row.coordinates[1],
+    row.coordinates[0],
+    formatXlsxValue(row.mean),
+    formatXlsxValue(row.min),
+    formatXlsxValue(row.max),
+    formatXlsxValue(row.stddev),
+    formatXlsxValue(row.median),
+    formatXlsxValue(row.variance),
+    formatXlsxValue(row.p25),
+    formatXlsxValue(row.p50),
+    formatXlsxValue(row.p75),
+    getClusterLabel(row.cluster),
+  ];
+}
+
 export default function Fase1NdviScreen({
   onNavigateToMap,
 }: Fase1NdviScreenProps) {
@@ -257,6 +283,36 @@ export default function Fase1NdviScreen({
     currentPage * pageSize,
   );
   const isMapLoading = lahanQuery.isLoading || mapDataQuery.isLoading;
+  const xlsxGroupHeaders = [
+    "Grid Area",
+    "Center Grid",
+    "",
+    "NDVI",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Cluster",
+  ];
+  const xlsxColumnHeaders = [
+    "",
+    "Long",
+    "Lat",
+    "Mean",
+    "Min",
+    "Max",
+    "Std Dev",
+    "Median",
+    "Variance",
+    "P25",
+    "P50",
+    "P75",
+    "",
+  ];
 
   const handleNavigateToMap = (row: PhaseTableRow) => {
     onNavigateToMap({
@@ -265,6 +321,43 @@ export default function Fase1NdviScreen({
       coordinates: row.coordinates,
       data: row,
     });
+  };
+
+  const handleDownloadXlsx = () => {
+    const sheetRows = [
+      xlsxGroupHeaders,
+      xlsxColumnHeaders,
+      ...filteredRows.map((row) => toXlsxRecord(row)),
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
+    const workbook = XLSX.utils.book_new();
+    const date = new Date().toISOString().slice(0, 10);
+    const fieldCode = selectedLahanOption?.fieldCode ?? "lahan";
+
+    worksheet["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
+      { s: { r: 0, c: 1 }, e: { r: 0, c: 2 } },
+      { s: { r: 0, c: 3 }, e: { r: 0, c: 11 } },
+      { s: { r: 0, c: 12 }, e: { r: 1, c: 12 } },
+    ];
+    worksheet["!cols"] = [
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 16 },
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Data Sampling NDVI");
+    XLSX.writeFile(workbook, `data-sampling-ndvi-${fieldCode}-${date}.xlsx`);
   };
 
   const handleNavigateToLahan = () => {
@@ -453,7 +546,7 @@ export default function Fase1NdviScreen({
               Tabel NDVI Fase 1
             </h3>
           </div>
-          <div className="grid gap-2 md:grid-cols-[280px_170px]">
+          <div className="grid gap-2 md:grid-cols-[280px_170px_132px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -481,6 +574,15 @@ export default function Fase1NdviScreen({
                 ...clusterOptions,
               ]}
             />
+            <button
+              onClick={handleDownloadXlsx}
+              disabled={isMapLoading || filteredRows.length === 0}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-700/40 bg-white px-4 text-[13px] font-bold text-emerald-800 shadow-[0_6px_14px_rgba(15,23,42,0.08)] transition hover:bg-emerald-900/5 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-300 disabled:shadow-none"
+              title="Download XLSX"
+            >
+              <Download className="h-4 w-4" />
+              Download
+            </button>
           </div>
         </div>
 
