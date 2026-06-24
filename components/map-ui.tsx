@@ -51,6 +51,7 @@ import {
   Activity,
   MapPinned,
   ScanSearch,
+  Info,
 } from "lucide-react";
 
 import FilterSelect from "./filter-select";
@@ -91,6 +92,111 @@ import {
 import type { OptReportRow, OptYearMetadata } from "@/types/opt-report";
 
 // ... existing code down to MapClickHandler ...
+
+const HAMA_FIELD_HELP: Partial<Record<keyof OptReportRow | string, string>> = {
+  area: "Lokasi area pengamatan OPT berdasarkan desa dan kecamatan.",
+  waktu: "Bulan, tahun, dan periode laporan pengamatan OPT.",
+  tahun: "Tahun laporan pengamatan OPT.",
+  komoditas: "Komoditas dan musim tanam pada laporan pengamatan.",
+  opt: "Organisme Pengganggu Tumbuhan yang diamati.",
+  lt: "Luas Tanam (ha).",
+  ssr: "Serangan Sangat Ringan (ha).",
+  sss: "Serangan Ringan (ha).",
+  ssb: "Serangan Sedang (ha).",
+  ssp: "Serangan Berat (ha).",
+  ssj: "Serangan Puso/Sangat Berat (ha).",
+  terkendali: "Luas serangan yang berhasil dikendalikan (ha).",
+  panen: "Luas panen terdampak (ha).",
+  intensitas: "Persentase intensitas serangan.",
+  ltsr: "Luas Tambah Serangan Ringan (ha).",
+  ltss: "Luas Tambah Serangan Sedang (ha).",
+  ltsb: "Luas Tambah Serangan Berat (ha).",
+  ltsp: "Luas Tambah Serangan Puso (ha).",
+  ltsj: "Luas Tambah Serangan Jumlah (ha).",
+  kimia: "Luas pengendalian dengan pestisida kimia (ha).",
+  hayati: "Luas pengendalian menggunakan agen hayati (ha).",
+  eradikasi: "Luas pengendalian dengan eradikasi/pemusnahan (ha).",
+  cl: "Cultural Control / pengendalian kultur teknis (ha).",
+  jumlahPengendali: "Total luas pengendalian seluruh metode (ha).",
+  lksr: "Luas Keadaan Serangan Ringan (ha).",
+  lkss: "Luas Keadaan Serangan Sedang (ha).",
+  lksb: "Luas Keadaan Serangan Berat (ha).",
+  lksp: "Luas Keadaan Serangan Puso (ha).",
+  lksj: "Luas Keadaan Serangan Jumlah (ha).",
+  waspada: "Luas area waspada/potensi serangan (ha).",
+};
+
+type HamaHelpContent =
+  | string
+  | {
+      summary: string;
+      items: { label: string; description: string }[];
+    };
+
+function HamaInfoLabel({
+  label,
+  helpKey,
+  helpText,
+}: {
+  label: string;
+  helpKey?: keyof OptReportRow | string;
+  helpText?: HamaHelpContent;
+}) {
+  const help = helpText ?? (helpKey ? HAMA_FIELD_HELP[helpKey] : undefined);
+  const ariaHelp =
+    typeof help === "string"
+      ? help
+      : help
+        ? `${help.summary} ${help.items.map((item) => `${item.label}: ${item.description}`).join(". ")}`
+        : undefined;
+
+  if (!help) {
+    return <>{label}</>;
+  }
+
+  return (
+    <span className="group/tooltip relative inline-flex items-center gap-1">
+      <span>{label}</span>
+      <span
+        tabIndex={0}
+        aria-label={`Keterangan ${label}: ${ariaHelp}`}
+        className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-slate-400 outline-none transition hover:bg-white hover:text-rose-700 focus:bg-white focus:text-rose-700"
+      >
+        <Info className="h-3 w-3" />
+      </span>
+      <span className="pointer-events-none absolute left-0 top-[calc(100%+10px)] z-[1700] hidden w-[min(19rem,calc(100vw-3rem))] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[12px] font-semibold leading-relaxed normal-case tracking-normal text-slate-700 shadow-[0_18px_45px_rgba(15,23,42,0.16)] group-hover/tooltip:block group-focus-within/tooltip:block">
+        <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-rose-700">
+          {label}
+        </span>
+        {typeof help === "string" ? (
+          help
+        ) : (
+          <>
+            <span className="block text-[12px] font-semibold leading-relaxed text-slate-700">
+              {help.summary}
+            </span>
+            <span className="mt-2 block space-y-1">
+              {help.items.map((item) => (
+                <span key={item.label} className="flex gap-2">
+                  <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-rose-500" />
+                  <span>
+                    <span className="font-black text-slate-900">
+                      {item.label}
+                    </span>
+                    <span className="text-slate-600">
+                      {" "}
+                      = {item.description}
+                    </span>
+                  </span>
+                </span>
+              ))}
+            </span>
+          </>
+        )}
+      </span>
+    </span>
+  );
+}
 
 function MapResizer() {
   const map = useMap();
@@ -1481,69 +1587,219 @@ function SelectedFeatureMarker({
                   {
                     key: "serangan",
                     title: "Serangan",
+                    help: {
+                      summary:
+                        "Menampilkan luas serangan OPT berdasarkan tingkat keparahan dan dampaknya.",
+                      items: [
+                        {
+                          label: "SSR",
+                          description: "Serangan Sangat Ringan (ha)",
+                        },
+                        { label: "SSS", description: "Serangan Ringan (ha)" },
+                        { label: "SSB", description: "Serangan Sedang (ha)" },
+                        { label: "SSP", description: "Serangan Berat (ha)" },
+                        {
+                          label: "SSJ",
+                          description: "Serangan Puso/Sangat Berat (ha)",
+                        },
+                        {
+                          label: "Terkendali",
+                          description:
+                            "luas serangan yang berhasil dikendalikan (ha)",
+                        },
+                        {
+                          label: "Panen",
+                          description: "luas panen terdampak (ha)",
+                        },
+                        {
+                          label: "Intensitas",
+                          description: "persentase intensitas serangan",
+                        },
+                      ],
+                    },
                     tone: "text-rose-700",
                     icon: Bug,
                     open: showHamaAttackStats,
                     onToggle: () =>
                       setShowHamaAttackStats((current) => !current),
                     rows: [
-                      ["SSR", value("ssr")],
-                      ["SSS", value("sss")],
-                      ["SSB", value("ssb")],
-                      ["SSP", value("ssp")],
-                      ["SSJ", value("ssj")],
-                      ["Terkendali", value("terkendali")],
-                      ["Panen", value("panen")],
-                      ["Intensitas", value("intensitas", "%")],
+                      { label: "SSR", helpKey: "ssr", value: value("ssr") },
+                      { label: "SSS", helpKey: "sss", value: value("sss") },
+                      { label: "SSB", helpKey: "ssb", value: value("ssb") },
+                      { label: "SSP", helpKey: "ssp", value: value("ssp") },
+                      { label: "SSJ", helpKey: "ssj", value: value("ssj") },
+                      {
+                        label: "Terkendali",
+                        helpKey: "terkendali",
+                        value: value("terkendali"),
+                      },
+                      {
+                        label: "Panen",
+                        helpKey: "panen",
+                        value: value("panen"),
+                      },
+                      {
+                        label: "Intensitas",
+                        helpKey: "intensitas",
+                        value: value("intensitas", "%"),
+                      },
                     ],
                   },
                   {
                     key: "luas-tambah",
                     title: "Luas Tambah Serangan",
+                    help: {
+                      summary:
+                        "Menampilkan penambahan luas serangan baru pada periode laporan.",
+                      items: [
+                        {
+                          label: "LTSR",
+                          description: "Luas Tambah Serangan Ringan (ha)",
+                        },
+                        {
+                          label: "LTSS",
+                          description: "Luas Tambah Serangan Sedang (ha)",
+                        },
+                        {
+                          label: "LTSB",
+                          description: "Luas Tambah Serangan Berat (ha)",
+                        },
+                        {
+                          label: "LTSP",
+                          description: "Luas Tambah Serangan Puso (ha)",
+                        },
+                        {
+                          label: "LTSJ",
+                          description: "Luas Tambah Serangan Jumlah (ha)",
+                        },
+                      ],
+                    },
                     tone: "text-amber-700",
                     icon: Activity,
                     open: showHamaAddedAttackStats,
                     onToggle: () =>
                       setShowHamaAddedAttackStats((current) => !current),
                     rows: [
-                      ["LTSR", value("ltsr")],
-                      ["LTSS", value("ltss")],
-                      ["LTSB", value("ltsb")],
-                      ["LTSP", value("ltsp")],
-                      ["LTSJ", value("ltsj")],
+                      { label: "LTSR", helpKey: "ltsr", value: value("ltsr") },
+                      { label: "LTSS", helpKey: "ltss", value: value("ltss") },
+                      { label: "LTSB", helpKey: "ltsb", value: value("ltsb") },
+                      { label: "LTSP", helpKey: "ltsp", value: value("ltsp") },
+                      { label: "LTSJ", helpKey: "ltsj", value: value("ltsj") },
                     ],
                   },
                   {
                     key: "pengendalian",
                     title: "Pengendalian",
+                    help: {
+                      summary:
+                        "Menampilkan luas area yang sudah mendapat tindakan pengendalian OPT.",
+                      items: [
+                        {
+                          label: "Kimia",
+                          description:
+                            "pengendalian dengan pestisida kimia (ha)",
+                        },
+                        {
+                          label: "Hayati",
+                          description:
+                            "pengendalian menggunakan agen hayati (ha)",
+                        },
+                        {
+                          label: "Eradikasi",
+                          description:
+                            "pengendalian dengan eradikasi/pemusnahan (ha)",
+                        },
+                        {
+                          label: "CL",
+                          description:
+                            "Cultural Control atau pengendalian secara kultur teknis (ha)",
+                        },
+                        {
+                          label: "Jumlah",
+                          description:
+                            "total luas pengendalian seluruh metode (ha)",
+                        },
+                      ],
+                    },
                     tone: "text-lime-700",
                     icon: Sprout,
                     open: showHamaControlStats,
                     onToggle: () =>
                       setShowHamaControlStats((current) => !current),
                     rows: [
-                      ["Kimia", value("kimia")],
-                      ["Hayati", value("hayati")],
-                      ["Eradikasi", value("eradikasi")],
-                      ["CL", value("cl")],
-                      ["Jumlah", value("jumlahPengendali")],
+                      {
+                        label: "Kimia",
+                        helpKey: "kimia",
+                        value: value("kimia"),
+                      },
+                      {
+                        label: "Hayati",
+                        helpKey: "hayati",
+                        value: value("hayati"),
+                      },
+                      {
+                        label: "Eradikasi",
+                        helpKey: "eradikasi",
+                        value: value("eradikasi"),
+                      },
+                      { label: "CL", helpKey: "cl", value: value("cl") },
+                      {
+                        label: "Jumlah",
+                        helpKey: "jumlahPengendali",
+                        value: value("jumlahPengendali"),
+                      },
                     ],
                   },
                   {
                     key: "keadaan",
                     title: "Keadaan Serangan",
+                    help: {
+                      summary:
+                        "Menampilkan kondisi luas serangan saat pengamatan dilakukan.",
+                      items: [
+                        {
+                          label: "LKSR",
+                          description: "Luas Keadaan Serangan Ringan (ha)",
+                        },
+                        {
+                          label: "LKSS",
+                          description: "Luas Keadaan Serangan Sedang (ha)",
+                        },
+                        {
+                          label: "LKSB",
+                          description: "Luas Keadaan Serangan Berat (ha)",
+                        },
+                        {
+                          label: "LKSP",
+                          description: "Luas Keadaan Serangan Puso (ha)",
+                        },
+                        {
+                          label: "LKSJ",
+                          description:
+                            "Luas Keadaan Serangan Jumlah atau total serangan saat pengamatan (ha)",
+                        },
+                        {
+                          label: "Waspada",
+                          description: "luas area waspada/potensi serangan (ha)",
+                        },
+                      ],
+                    },
                     tone: "text-orange-700",
                     icon: Beaker,
                     open: showHamaConditionStats,
                     onToggle: () =>
                       setShowHamaConditionStats((current) => !current),
                     rows: [
-                      ["LKSR", value("lksr")],
-                      ["LKSS", value("lkss")],
-                      ["LKSB", value("lksb")],
-                      ["LKSP", value("lksp")],
-                      ["LKSJ", value("lksj")],
-                      ["Waspada", value("waspada")],
+                      { label: "LKSR", helpKey: "lksr", value: value("lksr") },
+                      { label: "LKSS", helpKey: "lkss", value: value("lkss") },
+                      { label: "LKSB", helpKey: "lksb", value: value("lksb") },
+                      { label: "LKSP", helpKey: "lksp", value: value("lksp") },
+                      { label: "LKSJ", helpKey: "lksj", value: value("lksj") },
+                      {
+                        label: "Waspada",
+                        helpKey: "waspada",
+                        value: value("waspada"),
+                      },
                     ],
                   },
                 ];
@@ -1556,7 +1812,7 @@ function SelectedFeatureMarker({
                       return (
                         <div
                           key={section.key}
-                          className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50/70"
+                          className="relative rounded-xl border border-slate-100 bg-slate-50/70"
                         >
                           <button
                             type="button"
@@ -1571,7 +1827,10 @@ function SelectedFeatureMarker({
                               className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${section.tone}`}
                             >
                               <SectionIcon className="h-3.5 w-3.5" />
-                              {section.title}
+                              <HamaInfoLabel
+                                label={section.title}
+                                helpText={section.help}
+                              />
                             </span>
                             <ChevronDown
                               className={`h-4 w-4 shrink-0 transition-transform ${section.open ? "rotate-180" : ""} ${section.tone}`}
@@ -1579,16 +1838,16 @@ function SelectedFeatureMarker({
                           </button>
                           {section.open && (
                             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-slate-100 px-3 pb-2 pt-1.5">
-                              {section.rows.map(([label, stat]) => (
+                              {section.rows.map((row) => (
                                 <div
-                                  key={label}
+                                  key={row.label}
                                   className="flex items-baseline justify-between gap-3 border-b border-slate-200/70 pb-1 last:border-b-0 [&:nth-last-child(2)]:border-b-0"
                                 >
                                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                    {label}
+                                    {row.label}
                                   </span>
                                   <span className="text-right text-[12px] font-black tabular-nums text-slate-800">
-                                    {stat}
+                                    {row.value}
                                   </span>
                                 </div>
                               ))}
