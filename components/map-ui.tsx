@@ -16,7 +16,11 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   ArrowDown,
   ArrowUp,
@@ -55,7 +59,6 @@ import {
   fetchLahan,
   fetchLahanMapData,
   getGridRectangleStyle,
-  toHamaTableRow,
   toInspectionTableRow,
   toMapSensorReading,
   toNdviTableRow,
@@ -70,6 +73,10 @@ import {
 } from "./map-api";
 import type { SelectedMapFeature } from "./types";
 import {
+  fetchOptRowsFromMetadata,
+  fetchOptYears,
+} from "@/services/opt-report-service";
+import {
   addSensorReading,
   addSensor7In1Reading,
   canUseFirebaseLahanService,
@@ -80,6 +87,7 @@ import {
   updateSensor7In1Reading,
   updateSensorReading,
 } from "@/services/lahan-service";
+import type { OptReportRow, OptYearMetadata } from "@/types/opt-report";
 
 // ... existing code down to MapClickHandler ...
 
@@ -131,6 +139,11 @@ function SelectedFeatureMarker({
     useState(true);
   const [showInspectionSensor7In1Stats, setShowInspectionSensor7In1Stats] =
     useState(true);
+  const [showHamaAttackStats, setShowHamaAttackStats] = useState(true);
+  const [showHamaAddedAttackStats, setShowHamaAddedAttackStats] =
+    useState(false);
+  const [showHamaControlStats, setShowHamaControlStats] = useState(false);
+  const [showHamaConditionStats, setShowHamaConditionStats] = useState(true);
   const [sensorHistoryIndex, setSensorHistoryIndex] = useState(0);
   const [sensor7In1HistoryIndex, setSensor7In1HistoryIndex] = useState(0);
   const map = useMap();
@@ -177,6 +190,10 @@ function SelectedFeatureMarker({
     setShowFase2Sensor7In1Stats(false);
     setShowInspectionSensorStats(true);
     setShowInspectionSensor7In1Stats(true);
+    setShowHamaAttackStats(true);
+    setShowHamaAddedAttackStats(false);
+    setShowHamaControlStats(false);
+    setShowHamaConditionStats(false);
   }, [feature.data?.recordedAt, feature.id, feature.mode]);
 
   useEffect(() => {
@@ -1348,7 +1365,7 @@ function SelectedFeatureMarker({
                   Fase 2: Hama
                 </div>
                 <span className="flex h-7 shrink-0 items-center rounded-lg bg-rose-800 px-2.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
-                  {feature.id}
+                  {feature.data.area?.split(",")[0] || feature.id}
                 </span>
               </div>
 
@@ -1368,69 +1385,64 @@ function SelectedFeatureMarker({
               )}
 
               {(() => {
-                const level = String(feature.data.tingkat || "").toLowerCase();
-                const status = String(feature.data.status || "");
-                let cardStyle = "border-slate-200 bg-white";
-                let statusStyle = "text-slate-800";
-                let chipStyle = "bg-slate-100 text-slate-700 border-slate-200";
-                let dotStyle = "bg-slate-400";
-                let levelText = feature.data.tingkat || "-";
-
-                if (
-                  level.includes("tinggi") ||
-                  status.toLowerCase().includes("kritis")
-                ) {
-                  cardStyle = "border-rose-100 bg-rose-50/40";
-                  statusStyle = "text-rose-900";
-                  chipStyle = "bg-rose-50 text-rose-700 border-rose-200";
-                  dotStyle = "bg-rose-500";
-                } else if (level.includes("sedang")) {
-                  cardStyle = "border-amber-100 bg-amber-50/40";
-                  statusStyle = "text-amber-900";
-                  chipStyle = "bg-amber-50 text-amber-700 border-amber-200";
-                  dotStyle = "bg-amber-500";
-                } else if (level.includes("rendah")) {
-                  cardStyle = "border-emerald-100 bg-emerald-50/40";
-                  statusStyle = "text-emerald-900";
-                  chipStyle =
-                    "bg-emerald-50 text-emerald-700 border-emerald-200";
-                  dotStyle = "bg-emerald-500";
-                }
+                const hamaRaw = feature.data.raw as
+                  | Partial<OptReportRow>
+                  | undefined;
+                const cardStyle = "border-rose-100 bg-rose-50/25";
+                const statusStyle = "text-slate-900";
+                const chipStyle =
+                  "bg-white text-rose-700 border-rose-200 shadow-[0_8px_18px_-14px_rgba(225,29,72,0.9)]";
+                const dotStyle = "bg-rose-500";
+                const waktu = [
+                  hamaRaw?.bulan ? getOptMonthLabel(hamaRaw.bulan) : "",
+                  hamaRaw?.tahun ?? feature.data.recordedAt,
+                  hamaRaw?.periode ? `Periode ${hamaRaw.periode}` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                const komoditas = [
+                  hamaRaw?.komoditas,
+                  hamaRaw?.mt ? `MT ${hamaRaw.mt}` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
 
                 return (
                   <div
-                    className={`mb-2 rounded-xl border px-3 py-2.5 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.1)] ${cardStyle}`}
+                    className={`relative mb-2 overflow-hidden rounded-xl border px-3 py-3 shadow-[0_10px_28px_-22px_rgba(225,29,72,0.55)] ${cardStyle}`}
                   >
-                    <div className="mb-2 flex items-end justify-between gap-3">
+                    <div className="mb-3 flex items-end justify-between gap-4">
                       <div className="text-left">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          Status Hama
+                          LKSJ
                         </p>
                         <div
                           className={`mt-0.5 text-[25px] font-black leading-none tracking-tighter ${statusStyle}`}
                         >
-                          {feature.data.status || "-"}
+                          {feature.data.lksj || feature.data.status || "-"}
                         </div>
                       </div>
                       <div className="flex flex-col items-end text-right">
                         <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          Risiko
+                          OPT Terdeteksi
                         </p>
                         <div
-                          className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold ${chipStyle}`}
+                          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wide ${chipStyle}`}
                         >
                           <span
                             className={`h-1.5 w-1.5 rounded-full ${dotStyle}`}
                           />
-                          {levelText}
+                          {feature.data.jenis || "-"}
                         </div>
                       </div>
                     </div>
 
-                    <div className="grid gap-y-1 rounded-lg border border-white/70 bg-white/75 px-3 py-1.5">
+                    <div className="grid gap-y-1 rounded-lg border border-rose-100/70 bg-white/80 px-3 py-1.5">
                       {[
-                        { label: "Jenis", value: feature.data.jenis },
                         { label: "Area", value: feature.data.area },
+                        { label: "Waktu", value: waktu },
+                        { label: "Tahun", value: feature.data.recordedAt },
+                        { label: "Komoditas", value: komoditas },
                       ].map((item) => (
                         <div
                           key={item.label}
@@ -1449,15 +1461,144 @@ function SelectedFeatureMarker({
                 );
               })()}
 
-              <div className="rounded-xl border border-rose-100 bg-white px-3 py-2 shadow-[0_2px_10px_-5px_rgba(0,0,0,0.16)]">
-                <div className="mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-rose-700">
-                  <Bug className="h-3.5 w-3.5" />
-                  Rekomendasi
-                </div>
-                <p className="m-0 text-[12px] font-semibold leading-[1.35] text-slate-800">
-                  {feature.data.rekomendasi || "-"}
-                </p>
-              </div>
+              {(() => {
+                const hamaRaw = feature.data.raw as
+                  | Partial<OptReportRow>
+                  | undefined;
+                const value = (key: keyof OptReportRow, suffix = "ha") => {
+                  const rawValue = hamaRaw?.[key];
+
+                  if (typeof rawValue !== "number") {
+                    return "-";
+                  }
+
+                  return suffix
+                    ? `${formatOptMapNumber(rawValue)} ${suffix}`
+                    : formatOptMapNumber(rawValue, 4);
+                };
+                const sections = [
+                  {
+                    key: "serangan",
+                    title: "Serangan",
+                    tone: "text-rose-700",
+                    icon: Bug,
+                    open: showHamaAttackStats,
+                    onToggle: () =>
+                      setShowHamaAttackStats((current) => !current),
+                    rows: [
+                      ["SSR", value("ssr")],
+                      ["SSS", value("sss")],
+                      ["SSB", value("ssb")],
+                      ["SSP", value("ssp")],
+                      ["SSJ", value("ssj")],
+                      ["Terkendali", value("terkendali")],
+                      ["Panen", value("panen")],
+                      ["Intensitas", value("intensitas", "%")],
+                    ],
+                  },
+                  {
+                    key: "luas-tambah",
+                    title: "Luas Tambah Serangan",
+                    tone: "text-amber-700",
+                    icon: Activity,
+                    open: showHamaAddedAttackStats,
+                    onToggle: () =>
+                      setShowHamaAddedAttackStats((current) => !current),
+                    rows: [
+                      ["LTSR", value("ltsr")],
+                      ["LTSS", value("ltss")],
+                      ["LTSB", value("ltsb")],
+                      ["LTSP", value("ltsp")],
+                      ["LTSJ", value("ltsj")],
+                    ],
+                  },
+                  {
+                    key: "pengendalian",
+                    title: "Pengendalian",
+                    tone: "text-lime-700",
+                    icon: Sprout,
+                    open: showHamaControlStats,
+                    onToggle: () =>
+                      setShowHamaControlStats((current) => !current),
+                    rows: [
+                      ["Kimia", value("kimia")],
+                      ["Hayati", value("hayati")],
+                      ["Eradikasi", value("eradikasi")],
+                      ["CL", value("cl")],
+                      ["Jumlah", value("jumlahPengendali")],
+                    ],
+                  },
+                  {
+                    key: "keadaan",
+                    title: "Keadaan Serangan",
+                    tone: "text-orange-700",
+                    icon: Beaker,
+                    open: showHamaConditionStats,
+                    onToggle: () =>
+                      setShowHamaConditionStats((current) => !current),
+                    rows: [
+                      ["LKSR", value("lksr")],
+                      ["LKSS", value("lkss")],
+                      ["LKSB", value("lksb")],
+                      ["LKSP", value("lksp")],
+                      ["LKSJ", value("lksj")],
+                      ["Waspada", value("waspada")],
+                    ],
+                  },
+                ];
+
+                return (
+                  <div className="space-y-2">
+                    {sections.map((section) => {
+                      const SectionIcon = section.icon;
+
+                      return (
+                        <div
+                          key={section.key}
+                          className="overflow-hidden rounded-xl border border-slate-100 bg-slate-50/70"
+                        >
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              section.onToggle();
+                            }}
+                            className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+                            aria-expanded={section.open}
+                          >
+                            <span
+                              className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${section.tone}`}
+                            >
+                              <SectionIcon className="h-3.5 w-3.5" />
+                              {section.title}
+                            </span>
+                            <ChevronDown
+                              className={`h-4 w-4 shrink-0 transition-transform ${section.open ? "rotate-180" : ""} ${section.tone}`}
+                            />
+                          </button>
+                          {section.open && (
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-slate-100 px-3 pb-2 pt-1.5">
+                              {section.rows.map(([label, stat]) => (
+                                <div
+                                  key={label}
+                                  className="flex items-baseline justify-between gap-3 border-b border-slate-200/70 pb-1 last:border-b-0 [&:nth-last-child(2)]:border-b-0"
+                                >
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                    {label}
+                                  </span>
+                                  <span className="text-right text-[12px] font-black tabular-nums text-slate-800">
+                                    {stat}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -2087,6 +2228,42 @@ type SheetState = "collapsed" | "expanded";
 type PanelSortKey = "mean" | "cluster";
 type PanelSortDirection = "asc" | "desc";
 
+const OPT_MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "Mei",
+  "Jun",
+  "Jul",
+  "Agu",
+  "Sep",
+  "Okt",
+  "Nov",
+  "Des",
+];
+const EMPTY_OPT_ROWS: OptReportRow[] = [];
+const HAMA_MARKER_ICON = new L.DivIcon({
+  html: `<div style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;background:#fff1f2;border:2px solid #ffffff;box-shadow:0 8px 16px rgba(15,23,42,.28);">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="m8 2 1.88 1.88"/>
+      <path d="M14.12 3.88 16 2"/>
+      <path d="M9 7.13v-1a3 3 0 0 1 6 0v1"/>
+      <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/>
+      <path d="M12 20v-9"/>
+      <path d="M6.53 9C4.6 8.8 3 7.1 3 5"/>
+      <path d="M6 13H2"/>
+      <path d="M3 21c0-2.1 1.7-3.9 3.8-4"/>
+      <path d="M17.47 9C19.4 8.8 21 7.1 21 5"/>
+      <path d="M18 13h4"/>
+      <path d="M21 21c0-2.1-1.7-3.9-3.8-4"/>
+    </svg>
+  </div>`,
+  className: "",
+  iconSize: [30, 30],
+  iconAnchor: [15, 15],
+});
+
 function panelNumericValue(value: string | undefined) {
   return Number(String(value ?? "").replace("%", "")) || 0;
 }
@@ -2202,12 +2379,68 @@ function compareClusterLabels(a: string, b: string) {
   return a.localeCompare(b, undefined, { numeric: true });
 }
 
+function formatOptMapNumber(value: number | null | undefined, digits = 2) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "0";
+  }
+
+  return new Intl.NumberFormat("id-ID", {
+    maximumFractionDigits: digits,
+  }).format(value);
+}
+
+function toOptPhaseRow(row: OptReportRow): PhaseTableRow {
+  const lksj = formatOptMapNumber(row.lksj);
+  const terkendali = formatOptMapNumber(row.terkendali);
+  const waspada = formatOptMapNumber(row.waspada);
+  const lokasi = [row.desa, row.kecamatan].filter(Boolean).join(", ");
+
+  return {
+    grid: row.id,
+    coordinates: [row.latitude, row.longitude],
+    raw: row,
+    area: lokasi,
+    status: row.lksj > 0 ? `LKSJ ${lksj} ha` : `Waspada ${waspada} ha`,
+    jenis: row.opt || "-",
+    lksj: `${lksj} ha`,
+    rekomendasi: `Komoditas ${row.komoditas || "-"} - MT ${row.mt || "-"} - terkendali ${terkendali} ha, waspada ${waspada} ha.`,
+    recordedAt: `${row.tahun}`,
+  };
+}
+
+function HamaMapMarker({
+  row,
+  onSelectFeature,
+}: {
+  row: PhaseTableRow;
+  onSelectFeature: (feature: SelectedMapFeature) => void;
+}) {
+  return (
+    <Marker
+      position={row.coordinates}
+      icon={HAMA_MARKER_ICON}
+      eventHandlers={{
+        click: (event) => {
+          event.originalEvent?.stopPropagation();
+          onSelectFeature({
+            id: row.grid,
+            mode: "fase2-hama",
+            coordinates: row.coordinates,
+            data: row,
+          });
+        },
+      }}
+    />
+  );
+}
+
 function getPhaseRows(
   activePhase: PhaseLayer,
   mapData?: LahanMapData | null,
+  optRows: OptReportRow[] = [],
 ): PhaseTableRow[] {
+  if (activePhase === "hama") return optRows.map(toOptPhaseRow);
   if (!mapData) return [];
-  if (activePhase === "hama") return mapData.hama.map(toHamaTableRow);
   if (activePhase === "inspection") {
     return mapData.inspectionPoints.map(toInspectionTableRow);
   }
@@ -2221,38 +2454,22 @@ function getPhaseMode(activePhase: PhaseLayer) {
   return "fase2-hama";
 }
 
-function getHamaRiskStyles(level?: string, status?: string) {
-  const normalized = `${level || ""} ${status || ""}`.toLowerCase();
-
-  if (normalized.includes("tinggi") || normalized.includes("kritis")) {
-    return {
-      label: level || "Tinggi",
-      chip: "bg-rose-50 text-rose-700 border-rose-200",
-      dot: "bg-rose-500",
-    };
+function getOptMonthLabel(month: number | null | undefined) {
+  if (!month || month < 1 || month > 12) {
+    return "-";
   }
 
-  if (normalized.includes("sedang") || normalized.includes("terindikasi")) {
-    return {
-      label: level || "Sedang",
-      chip: "bg-amber-50 text-amber-700 border-amber-200",
-      dot: "bg-amber-500",
-    };
-  }
+  return OPT_MONTH_LABELS[month - 1];
+}
 
-  if (normalized.includes("rendah")) {
-    return {
-      label: level || "Rendah",
-      chip: "bg-emerald-50 text-emerald-700 border-emerald-200",
-      dot: "bg-emerald-500",
-    };
-  }
-
-  return {
-    label: level || "-",
-    chip: "bg-slate-50 text-slate-500 border-slate-200",
-    dot: "bg-slate-300",
-  };
+function getOptMonthOptions(rows: OptReportRow[]) {
+  return Array.from(
+    new Set(
+      rows
+        .map((row) => row.bulan)
+        .filter((month) => Number.isInteger(month) && month >= 1 && month <= 12),
+    ),
+  ).sort((a, b) => a - b);
 }
 
 function normalizeSearchText(value: unknown) {
@@ -2261,14 +2478,111 @@ function normalizeSearchText(value: unknown) {
     .replace(/[^a-z0-9.%-]+/g, "");
 }
 
+function HamaMonthStepper({
+  year,
+  month,
+  monthOptions,
+  markerCount,
+  onChange,
+}: {
+  year: string;
+  month: number | null;
+  monthOptions: number[];
+  markerCount: number;
+  onChange: (month: number) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) {
+      return;
+    }
+
+    L.DomEvent.disableClickPropagation(containerRef.current);
+    L.DomEvent.disableScrollPropagation(containerRef.current);
+  }, []);
+
+  if (!month || monthOptions.length === 0) {
+    return null;
+  }
+
+  const currentIndex = monthOptions.indexOf(month);
+  const canGoPrev = currentIndex > 0;
+  const canGoNext = currentIndex >= 0 && currentIndex < monthOptions.length - 1;
+  const handlePrev = () => {
+    if (canGoPrev) {
+      onChange(monthOptions[currentIndex - 1]);
+    }
+  };
+  const handleNext = () => {
+    if (canGoNext) {
+      onChange(monthOptions[currentIndex + 1]);
+    }
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      onPointerUp={(event) => event.stopPropagation()}
+      onTouchStart={(event) => event.stopPropagation()}
+      onWheel={(event) => event.stopPropagation()}
+      className="no-map-click pointer-events-auto absolute right-[84px] top-12 z-[1500] hidden min-w-[176px] rounded-2xl border border-white/75 bg-white/95 p-2.5 shadow-[0_14px_40px_rgba(15,23,42,0.20)] backdrop-blur-xl sm:block"
+    >
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <p className="text-[9px] font-black uppercase tracking-widest text-rose-600">
+          Marker Hama
+        </p>
+        <span className="rounded-lg bg-rose-50 px-2 py-1 text-[10px] font-black text-rose-700 ring-1 ring-rose-100">
+          {markerCount.toLocaleString("id-ID")} titik
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={handlePrev}
+          disabled={!canGoPrev}
+          className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+          title="Bulan sebelumnya"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div className="min-w-0 flex-1 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-center">
+          <p className="text-[14px] font-black leading-none text-slate-950">
+            {getOptMonthLabel(month)} {year || ""}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleNext}
+          disabled={!canGoNext}
+          className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+          title="Bulan berikutnya"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function LayerDataPanel({
   activeOverlays,
   lahanOptions,
   selectedLahan,
   mapData,
   isMapDataLoading,
+  optYears,
+  selectedOptYear,
+  optRows,
+  isOptRowsLoading,
   selectedFeature,
   onSelectLahan,
+  onSelectOptYear,
   onSelectFeature,
   onCloseLayer,
 }: {
@@ -2277,8 +2591,13 @@ function LayerDataPanel({
   selectedLahan?: LahanOption | null;
   mapData?: LahanMapData | null;
   isMapDataLoading?: boolean;
+  optYears?: OptYearMetadata[];
+  selectedOptYear?: string;
+  optRows?: OptReportRow[];
+  isOptRowsLoading?: boolean;
   selectedFeature?: SelectedMapFeature | null;
   onSelectLahan: (lahan: LahanOption) => void;
+  onSelectOptYear?: (year: string) => void;
   onSelectFeature: (feature: SelectedMapFeature) => void;
   onCloseLayer: (phase: PhaseLayer) => void;
 }) {
@@ -2318,18 +2637,18 @@ function LayerDataPanel({
   }, [activePhase]);
 
   const rows = useMemo(
-    () => getPhaseRows(activePhase, mapData),
-    [activePhase, mapData],
+    () => getPhaseRows(activePhase, mapData, optRows),
+    [activePhase, mapData, optRows],
+  );
+  const optYearOptions = useMemo(
+    () =>
+      (optYears ?? []).map((year) => ({
+        value: String(year.tahun),
+        label: String(year.tahun),
+      })),
+    [optYears],
   );
   const clusterOptions = useMemo(() => {
-    if (activePhase === "hama") {
-      return [
-        { value: "rendah", label: "Rendah" },
-        { value: "sedang", label: "Sedang" },
-        { value: "tinggi", label: "Tinggi" },
-      ];
-    }
-
     const options = new Map<string, string>();
 
     rows.forEach((row) => {
@@ -2365,15 +2684,13 @@ function LayerDataPanel({
         ? "Titik cek lapangan"
         : activePhase === "fase2"
           ? "Analitik NDVI & sensor"
-          : "Indikasi hama & rekomendasi";
+          : "Arsip OPT historis desa";
   const normalizedQuery = normalizeSearchText(query);
   const filteredRows = rows
     .filter((row) => {
       const rowData = row;
       const cluster =
-        activePhase === "hama"
-          ? getHamaRiskStyles(rowData.tingkat, rowData.status).label
-          : getClusterStyles(rowData.cluster).label;
+        activePhase === "hama" ? "" : getClusterStyles(rowData.cluster).label;
       const coordinates = row.coordinates;
       const searchableText = [
         row.grid,
@@ -2406,7 +2723,9 @@ function LayerDataPanel({
       return (
         (!normalizedQuery ||
           normalizeSearchText(searchableText).includes(normalizedQuery)) &&
-        (clusterFilter === "semua" || cluster.toLowerCase() === clusterFilter)
+        (activePhase === "hama" ||
+          clusterFilter === "semua" ||
+          cluster.toLowerCase() === clusterFilter)
       );
     })
     .sort((a, b) => {
@@ -2420,13 +2739,9 @@ function LayerDataPanel({
         sortValue = panelNumericValue(a.mean) - panelNumericValue(b.mean);
       } else if (sortKey === "cluster") {
         const aCluster =
-          activePhase === "hama"
-            ? getHamaRiskStyles(a.tingkat, a.status).label
-            : getClusterStyles(a.cluster).label;
+          activePhase === "hama" ? "" : getClusterStyles(a.cluster).label;
         const bCluster =
-          activePhase === "hama"
-            ? getHamaRiskStyles(b.tingkat, b.status).label
-            : getClusterStyles(b.cluster).label;
+          activePhase === "hama" ? "" : getClusterStyles(b.cluster).label;
 
         sortValue =
           getClusterSortRank(aCluster) - getClusterSortRank(bCluster) ||
@@ -2441,7 +2756,22 @@ function LayerDataPanel({
     (currentPage - 1) * pageSize,
     currentPage * pageSize,
   );
-  const isTableLoading = Boolean(isMapDataLoading && selectedLahan);
+  const optYearLabel =
+    activePhase === "hama" && selectedOptYear
+      ? selectedOptYear
+      : activePhase === "hama" && optRows?.[0]?.tahun
+        ? String(optRows[0].tahun)
+        : "-";
+  const totalLksj = useMemo(
+    () => optRows?.reduce((total, row) => total + (row.lksj || 0), 0) ?? 0,
+    [optRows],
+  );
+  const formattedRowCount = rows.length.toLocaleString("id-ID");
+  const formattedTotalLksj = formatOptMapNumber(totalLksj);
+  const isTableLoading =
+    activePhase === "hama"
+      ? Boolean(isOptRowsLoading)
+      : Boolean(isMapDataLoading && selectedLahan);
 
   const handleSelectGrid = (row: (typeof rows)[number]) => {
     onSelectFeature({
@@ -2525,7 +2855,7 @@ function LayerDataPanel({
       onWheel={(event) => event.stopPropagation()}
       className={`absolute inset-x-0 bottom-0 z-[1200] flex w-full flex-col overflow-visible rounded-t-[26px] border border-white/70 bg-white/95 shadow-[0_-18px_50px_rgba(15,23,42,0.20)] backdrop-blur-xl transition-[max-height,width] duration-300 ease-out sm:left-6 sm:right-auto sm:top-[100px] sm:rounded-2xl sm:shadow-[0_18px_50px_rgba(15,23,42,0.18)] no-map-click ${
         sheetState === "expanded"
-          ? "max-h-[86dvh] sm:bottom-6 sm:max-h-none sm:w-[380px]"
+          ? "max-h-[86dvh] sm:bottom-auto sm:max-h-[calc(100dvh-124px)] sm:w-[380px]"
           : "max-h-[15dvh] sm:bottom-auto sm:w-[64px]"
       }`}
     >
@@ -2636,42 +2966,88 @@ function LayerDataPanel({
         </div>
 
         <div className="mt-3">
-          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-            Pilih Lahan
-          </p>
-          {selectedLahan ? (
-            <LahanSelector
-              options={lahanOptions}
-              value={selectedLahan}
-              onChange={onSelectLahan}
-            />
+          {activePhase === "hama" ? (
+            <div className="overflow-hidden rounded-2xl border border-rose-100 bg-gradient-to-br from-rose-50 via-white to-white shadow-[0_14px_34px_rgba(225,29,72,0.08)]">
+              <div className="flex items-start justify-between gap-3 border-b border-rose-100/80 px-3.5 py-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wider text-rose-600">
+                    Ringkasan Tahun
+                  </p>
+                  <p className="mt-0.5 text-[11px] font-semibold leading-snug text-slate-500">
+                    Tabel menampilkan arsip OPT setahun penuh.
+                  </p>
+                </div>
+                <div className="rounded-xl bg-white px-3 py-2 text-right ring-1 ring-rose-100">
+                  <p className="text-[8px] font-black uppercase tracking-wider text-slate-400">
+                    Tahun
+                  </p>
+                  <p className="mt-0.5 text-[13px] font-black leading-none text-rose-700">
+                    {optYearLabel}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 p-3">
+                <div className="rounded-xl bg-white px-3 py-2.5 ring-1 ring-rose-100/80">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                    Baris Tahunan
+                  </p>
+                  <p className="mt-1 text-[20px] font-black leading-none text-slate-950">
+                    {formattedRowCount}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-white px-3 py-2.5 ring-1 ring-rose-100/80">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">
+                    Total LKSJ
+                  </p>
+                  <p className="mt-1 text-[20px] font-black leading-none text-slate-950">
+                    {formattedTotalLksj}
+                  </p>
+                  <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-rose-500">
+                    ha
+                  </p>
+                </div>
+              </div>
+            </div>
           ) : (
-            <div className="flex h-11 items-center rounded-2xl border border-slate-200 bg-slate-50 px-4 text-[13px] font-semibold text-slate-400">
-              Memuat lahan...
-            </div>
+            <>
+              <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Pilih Lahan
+              </p>
+              {selectedLahan ? (
+                <LahanSelector
+                  options={lahanOptions}
+                  value={selectedLahan}
+                  onChange={onSelectLahan}
+                />
+              ) : (
+                <div className="flex h-11 items-center rounded-2xl border border-slate-200 bg-slate-50 px-4 text-[13px] font-semibold text-slate-400">
+                  Memuat lahan...
+                </div>
+              )}
+              <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Lokasi Lahan
+                  </p>
+                  <p className="mt-0.5 text-[12px] font-black text-slate-700">
+                    {mapData
+                      ? `${mapData.lahan.center.lng.toFixed(5)}, ${mapData.lahan.center.lat.toFixed(5)}`
+                      : isMapDataLoading
+                        ? "Memuat koordinat..."
+                        : "-"}
+                  </p>
+                </div>
+                <button
+                  onClick={handleSelectLahan}
+                  disabled={!mapData}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-emerald-700/40 bg-white text-emerald-800 shadow-[0_6px_14px_rgba(15,23,42,0.12)] transition hover:bg-emerald-900/5"
+                  title="Lihat lokasi lahan"
+                >
+                  <MapPin className="h-4 w-4" />
+                </button>
+              </div>
+            </>
           )}
-          <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Lokasi Lahan
-              </p>
-              <p className="mt-0.5 text-[12px] font-black text-slate-700">
-                {mapData
-                  ? `${mapData.lahan.center.lng.toFixed(5)}, ${mapData.lahan.center.lat.toFixed(5)}`
-                  : isMapDataLoading
-                    ? "Memuat koordinat..."
-                    : "-"}
-              </p>
-            </div>
-            <button
-              onClick={handleSelectLahan}
-              disabled={!mapData}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-emerald-700/40 bg-white text-emerald-800 shadow-[0_6px_14px_rgba(15,23,42,0.12)] transition hover:bg-emerald-900/5"
-              title="Lihat lokasi lahan"
-            >
-              <MapPin className="h-4 w-4" />
-            </button>
-          </div>
         </div>
 
         <div className="mt-3 grid grid-cols-[1fr_150px] gap-2">
@@ -2684,19 +3060,34 @@ function LayerDataPanel({
                 setPage(1);
               }}
               placeholder={
-                activePhase === "inspection" ? "Cari titik..." : "Cari grid..."
+                activePhase === "hama"
+                  ? "Cari desa, OPT..."
+                  : activePhase === "inspection"
+                    ? "Cari titik..."
+                    : "Cari grid..."
               }
               className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-[13px] font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-900/20"
             />
           </div>
           <FilterSelect
             icon={<Filter className="h-4 w-4 text-slate-400" />}
-            value={clusterFilter}
+            value={
+              activePhase === "hama" ? selectedOptYear || "" : clusterFilter
+            }
             onChange={(value) => {
-              setClusterFilter(value);
+              if (activePhase === "hama") {
+                onSelectOptYear?.(value);
+              } else {
+                setClusterFilter(value);
+              }
               setPage(1);
             }}
-            options={[{ value: "semua", label: "Semua" }, ...clusterOptions]}
+            options={
+              activePhase === "hama"
+                ? optYearOptions
+                : [{ value: "semua", label: "Semua" }, ...clusterOptions]
+            }
+            disabled={activePhase === "hama" && optYearOptions.length === 0}
           />
         </div>
       </div>
@@ -2709,7 +3100,7 @@ function LayerDataPanel({
         <div
           className={`sticky top-0 z-10 grid border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 ${
             activePhase === "hama"
-              ? "grid-cols-[58px_1fr_66px_42px]"
+              ? "grid-cols-[1fr_70px_72px_42px]"
               : activePhase === "inspection"
                 ? "grid-cols-[58px_1fr_62px_42px]"
                 : activePhase === "fase1"
@@ -2719,9 +3110,9 @@ function LayerDataPanel({
         >
           {activePhase === "hama" ? (
             <>
-              <span className="text-center">Grid</span>
-              <span className="text-center">Status</span>
-              <span className="text-center">Risiko</span>
+              <span className="text-center">Desa</span>
+              <span className="text-center">OPT</span>
+              <span className="text-center">LKSJ</span>
               <span className="text-center">Aksi</span>
             </>
           ) : activePhase === "inspection" ? (
@@ -2760,7 +3151,7 @@ function LayerDataPanel({
                   key={index}
                   className={`grid w-full items-center gap-3 rounded-xl bg-white py-2 ${
                     activePhase === "hama"
-                      ? "grid-cols-[58px_1fr_66px_42px]"
+                      ? "grid-cols-[1fr_70px_72px_42px]"
                       : activePhase === "inspection"
                         ? "grid-cols-[58px_1fr_62px_42px]"
                         : activePhase === "fase1"
@@ -2782,10 +3173,7 @@ function LayerDataPanel({
         ) : (
           pagedRows.map((row) => {
             const rowData = row;
-            const cluster =
-              activePhase === "hama"
-                ? getHamaRiskStyles(rowData.tingkat, rowData.status)
-                : getClusterStyles(rowData.cluster);
+            const cluster = getClusterStyles(rowData.cluster);
             const isSelected = selectedGrid === row.grid;
 
             return (
@@ -2793,7 +3181,7 @@ function LayerDataPanel({
                 key={`${activePhase}-${row.grid}`}
                 className={`grid w-full items-center gap-0 border-b border-slate-100 px-4 py-3 text-center transition-colors last:border-b-0 ${
                   activePhase === "hama"
-                    ? "grid-cols-[58px_1fr_66px_42px]"
+                    ? "grid-cols-[1fr_70px_72px_42px]"
                     : activePhase === "inspection"
                       ? "grid-cols-[58px_1fr_62px_42px]"
                       : activePhase === "fase1"
@@ -2804,20 +3192,17 @@ function LayerDataPanel({
                 }`}
               >
                 <span className="text-center font-black text-[13px] text-slate-900">
-                  {row.grid}
+                  {activePhase === "hama"
+                    ? row.area?.split(",")[0] || row.grid
+                    : row.grid}
                 </span>
                 {activePhase === "hama" ? (
                   <>
                     <span className="min-w-0 px-1 text-center text-[12px] font-black text-slate-800">
-                      {rowData.status || "-"}
+                      {rowData.jenis || "-"}
                     </span>
-                    <span
-                      className={`mx-auto inline-flex w-fit items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] font-bold ${cluster.chip}`}
-                    >
-                      <span
-                        className={`h-1.5 w-1.5 rounded-full ${cluster.dot}`}
-                      />
-                      {cluster.label}
+                    <span className="text-center text-[12px] font-black tabular-nums text-slate-800">
+                      {rowData.lksj || "-"}
                     </span>
                     <span className="flex justify-center">
                       <button
@@ -2913,7 +3298,9 @@ function LayerDataPanel({
         {!isTableLoading && filteredRows.length === 0 && (
           <div className="px-4 py-8 text-center">
             <p className="text-[13px] font-bold text-slate-700">
-              {activePhase === "inspection"
+              {activePhase === "hama"
+                ? "Data OPT tidak ditemukan"
+                : activePhase === "inspection"
                 ? "Titik inspeksi tidak ditemukan"
                 : "Grid tidak ditemukan"}
             </p>
@@ -4214,6 +4601,8 @@ export default function MapUI({
   const [baseLayer, setBaseLayer] = useState<MapType>("satellite");
   const [activeOverlays, setActiveOverlays] = useState<OverlayType[]>([]);
   const [selectedLahanId, setSelectedLahanId] = useState<string | null>(null);
+  const [selectedOptYear, setSelectedOptYear] = useState("");
+  const [selectedOptMonth, setSelectedOptMonth] = useState<number | null>(null);
   const [panelSelectedFeature, setPanelSelectedFeature] =
     useState<SelectedMapFeature | null>(null);
   const [sensorModalTarget, setSensorModalTarget] =
@@ -4230,9 +4619,11 @@ export default function MapUI({
   const [showDeleteSensor7In1Confirm, setShowDeleteSensor7In1Confirm] =
     useState(false);
   const focusedFeature = panelSelectedFeature ?? selectedFeature;
+  const hasMapDataOverlay = activeOverlays.some((overlay) => overlay !== "hama");
   const shouldLoadMapData =
     Boolean(selectedLahanId) &&
-    (activeOverlays.length > 0 || Boolean(focusedFeature));
+    (hasMapDataOverlay ||
+      Boolean(focusedFeature && focusedFeature.mode !== "fase2-hama"));
   const lahanQuery = useQuery({
     queryKey: ["lahan"],
     queryFn: fetchLahan,
@@ -4244,6 +4635,41 @@ export default function MapUI({
     enabled: shouldLoadMapData,
     staleTime: 60 * 1000,
   });
+  const shouldLoadOptRows =
+    activeOverlays.includes("hama") || focusedFeature?.mode === "fase2-hama";
+  const optYearsQuery = useQuery({
+    queryKey: ["opt-years"],
+    queryFn: fetchOptYears,
+    enabled: shouldLoadOptRows,
+    staleTime: 10 * 60 * 1000,
+  });
+  const activeOptYear =
+    optYearsQuery.data?.find(
+      (year) => String(year.tahun) === selectedOptYear,
+    ) ??
+    optYearsQuery.data?.[0] ??
+    null;
+  const activeOptYearValue = activeOptYear ? String(activeOptYear.tahun) : "";
+  const optRowsQuery = useQuery({
+    queryKey: ["map-opt-rows", activeOptYear?.tahun],
+    queryFn: () => fetchOptRowsFromMetadata(activeOptYear!),
+    enabled: shouldLoadOptRows && Boolean(activeOptYear),
+    placeholderData: keepPreviousData,
+    staleTime: 10 * 60 * 1000,
+  });
+  const optRows = optRowsQuery.data ?? EMPTY_OPT_ROWS;
+  const optMonthOptions = useMemo(() => getOptMonthOptions(optRows), [optRows]);
+  const activeOptMonth =
+    selectedOptMonth && optMonthOptions.includes(selectedOptMonth)
+      ? selectedOptMonth
+      : optMonthOptions[0] ?? null;
+  const monthlyOptRows = useMemo(
+    () =>
+      activeOptMonth
+        ? optRows.filter((row) => row.bulan === activeOptMonth)
+        : [],
+    [activeOptMonth, optRows],
+  );
   const lahanOptions = lahanQuery.data ?? [];
   const selectedLahan =
     lahanOptions.find((option) => option.id === selectedLahanId) ?? null;
@@ -4797,22 +5223,14 @@ export default function MapUI({
           onSelectFeature={setPanelSelectedFeature}
         />
         {activeOverlays.includes("hama") &&
-          mapDataQuery.data?.hama.map((item) => {
-            const row = toHamaTableRow(item);
+          monthlyOptRows.map((item) => {
+            const row = toOptPhaseRow(item);
 
             return (
-              <SelectedFeatureMarker
-                key={`hama-${item.id}`}
-                feature={{
-                  id: row.grid,
-                  mode: "fase2-hama" as const,
-                  coordinates: row.coordinates,
-                  data: row,
-                }}
-                onClose={() => {}}
-                onOpenSensorModal={handleOpenSensorModal}
-                onOpenSensor7In1Modal={handleOpenSensor7In1Modal}
-                autoFocus={false}
+              <HamaMapMarker
+                key={`hama-${row.grid}`}
+                row={row}
+                onSelectFeature={setPanelSelectedFeature}
               />
             );
           })}
@@ -4822,6 +5240,15 @@ export default function MapUI({
           selectedFeature={focusedFeature}
         />
         <ZoomControl position="topright" />
+        {activeOverlays.includes("hama") && (
+          <HamaMonthStepper
+            year={activeOptYearValue}
+            month={activeOptMonth}
+            monthOptions={optMonthOptions}
+            markerCount={monthlyOptRows.length}
+            onChange={setSelectedOptMonth}
+          />
+        )}
         <MapSearchOverlay />
         <LocateUserButton />
 
@@ -4866,8 +5293,16 @@ export default function MapUI({
         selectedLahan={selectedLahan}
         mapData={mapDataQuery.data}
         isMapDataLoading={mapDataQuery.isLoading}
+        optYears={optYearsQuery.data ?? []}
+        selectedOptYear={activeOptYearValue}
+        optRows={optRows}
+        isOptRowsLoading={
+          shouldLoadOptRows &&
+          (optYearsQuery.isLoading || optRowsQuery.isLoading)
+        }
         selectedFeature={focusedFeature}
         onSelectLahan={handleSelectLahan}
+        onSelectOptYear={setSelectedOptYear}
         onSelectFeature={setPanelSelectedFeature}
         onCloseLayer={toggleOverlay}
       />

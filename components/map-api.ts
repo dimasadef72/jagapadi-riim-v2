@@ -23,6 +23,7 @@ import type {
   Sensor7In1Reading,
   SensorReading,
 } from "@/types/lahan";
+import type { OptReportRow } from "@/types/opt-report";
 
 export type LahanOption = {
   id: string;
@@ -170,7 +171,7 @@ export type LahanMapData = {
 export type PhaseTableRow = {
   grid: string;
   coordinates: [number, number];
-  raw: MapGrid | MapInspectionPoint | MapHama;
+  raw: MapGrid | MapInspectionPoint | MapHama | OptReportRow;
   ndvi?: string;
   mean?: string;
   min?: string;
@@ -192,6 +193,7 @@ export type PhaseTableRow = {
   status?: string;
   jenis?: string;
   tingkat?: string;
+  lksj?: string;
   rekomendasi?: string;
   imageUrl?: string;
   representedGrids?: string;

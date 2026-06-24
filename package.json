@@ -7,10 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "build:opt": "bun scripts/seed-opt-years.ts",
+    "gcs:cors:opt": "bun --env-file=.env scripts/configure-opt-gcs-cors.ts",
+    "seed:opt": "bun scripts/seed-opt-years.ts --upload",
     "seed:firebase": "bun --env-file=.env scripts/seed-firebase-lahan.ts",
     "seed:realtime": "bun --env-file=.env scripts/seed-realtime-lahan.ts"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.21.0",
     "@tanstack/react-query": "^5.97.0",
     "firebase": "^12.13.0",
     "leaflet": "^1.9.4",

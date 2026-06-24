@@ -16,16 +16,22 @@
 # migration reference
 /old_repo/
 
+# local source data
+/datasebaranhama/
+
 # next.js
 /.next/
 /out/
 
 # production
 /build
+/.generated
 
 # misc
 .DS_Store
 *.pem
+*.key.json
+service-account*.json
 
 # debug
 npm-debug.log*

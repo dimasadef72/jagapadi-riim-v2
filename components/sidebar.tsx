@@ -109,11 +109,11 @@ export default function Sidebar({
                 strokeWidth={1.5}
               />
             </div>
-            <div className="flex flex-col flex-shrink-0">
-              <h1 className="text-[17px] font-bold text-slate-900 leading-[1.1] tracking-tight font-sans">
-                JAGA{" "}
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-emerald-700">
-                  PADI
+            <div className="flex min-w-0 flex-col">
+              <h1 className="font-sans text-[15px] font-black leading-[1.05] tracking-tight text-slate-900">
+                JAGAPADI
+                <span className="text-amber-300 drop-shadow-[0_0_8px_rgba(252,211,77,0.35)]">
+                  Cluster
                 </span>
               </h1>
             </div>
