@@ -50,6 +50,7 @@ import {
   FlaskConical,
   Activity,
   MapPinned,
+  ScanSearch,
 } from "lucide-react";
 
 import FilterSelect from "./filter-select";
@@ -2014,7 +2015,14 @@ function LocateUserButton() {
 }
 
 type MapType = "default" | "satellite" | "terrain";
-type OverlayType = "rgb" | "ndvi" | "fase1" | "inspection" | "fase2" | "hama";
+type OverlayType =
+  | "rgb"
+  | "ndvi"
+  | "fase1"
+  | "inspection"
+  | "fase2"
+  | "hama"
+  | "hamaPrediction";
 
 function CustomLayerControl({
   baseLayer,
@@ -2038,7 +2046,7 @@ function CustomLayerControl({
   };
 
   return (
-    <div className="absolute top-[198px] sm:top-[128px] right-[16px] sm:right-6 z-[1300] no-map-click">
+    <div className="absolute top-[198px] sm:top-[128px] right-[16px] sm:right-6 z-[1600] no-map-click">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="w-12 h-12 bg-white rounded-[16px] shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex items-center justify-center hover:bg-gray-50 transition-colors text-[#4B7C63]"
@@ -2048,7 +2056,7 @@ function CustomLayerControl({
       </button>
 
       {isOpen && (
-        <div className="absolute top-0 right-14 max-h-[calc(100dvh-218px)] w-[calc(100vw-82px)] max-w-[320px] overflow-y-auto rounded-2xl border border-gray-100 bg-white p-2.5 text-gray-800 shadow-2xl sm:right-16 sm:max-h-[calc(100dvh-160px)] sm:max-w-[340px] sm:p-3">
+        <div className="table-scrollbar absolute top-0 right-14 max-h-[calc(100dvh-218px)] w-[calc(100vw-82px)] max-w-[320px] overflow-y-auto rounded-2xl border border-gray-100 bg-white p-2.5 text-gray-800 shadow-2xl sm:right-16 sm:max-h-[calc(100dvh-160px)] sm:max-w-[340px] sm:p-3">
           <div className="mb-1.5 flex items-center justify-between sm:mb-2">
             <h3 className="text-[13px] font-semibold text-gray-900 sm:text-[15px]">
               Map type
@@ -2184,13 +2192,6 @@ function CustomLayerControl({
                   "bg-gradient-to-br from-indigo-50 to-indigo-100 text-indigo-600",
                 icon: Beaker,
               },
-              {
-                id: "hama",
-                label: "Hama",
-                bgClass:
-                  "bg-gradient-to-br from-rose-50 to-rose-100 text-rose-600",
-                icon: Bug,
-              },
             ].map((layer) => {
               const ContentIcon = layer.icon;
               return (
@@ -2210,6 +2211,55 @@ function CustomLayerControl({
                   </div>
                   <span
                     className={`text-[10px] font-semibold sm:text-[11px] ${activeOverlays.includes(layer.id as OverlayType) ? "text-emerald-700" : "text-gray-500"}`}
+                  >
+                    {layer.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="my-2 h-[1px] w-full bg-gray-100 sm:my-2.5" />
+
+          <h3 className="mb-1 text-[13px] font-semibold text-gray-900 sm:mb-1.5 sm:text-[15px]">
+            Hama Details
+          </h3>
+
+          <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+            {[
+              {
+                id: "hama",
+                label: "Hama\nHistory",
+                bgClass:
+                  "bg-gradient-to-br from-rose-50 to-rose-100 text-rose-600",
+                icon: Bug,
+              },
+              {
+                id: "hamaPrediction",
+                label: "Hama\nPrediction",
+                bgClass:
+                  "bg-gradient-to-br from-amber-50 to-amber-100 text-amber-600",
+                icon: ScanSearch,
+              },
+            ].map((layer) => {
+              const ContentIcon = layer.icon;
+              return (
+                <div
+                  key={layer.id}
+                  className="flex flex-col items-center gap-1 cursor-pointer group relative"
+                  onClick={() => handleToggleOverlay(layer.id as OverlayType)}
+                >
+                  <div
+                    className={`h-12 w-12 overflow-hidden rounded-[14px] p-[2px] transition-all sm:h-[60px] sm:w-[60px] sm:rounded-[16px] ${activeOverlays.includes(layer.id as OverlayType) ? "ring-2 ring-emerald-500" : "ring-1 ring-gray-200 group-hover:ring-gray-300"}`}
+                  >
+                    <div
+                      className={`flex h-full w-full items-center justify-center rounded-[10px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] sm:rounded-[12px] ${layer.bgClass}`}
+                    >
+                      <ContentIcon className="h-5 w-5 stroke-[2px] sm:h-6 sm:w-6" />
+                    </div>
+                  </div>
+                  <span
+                    className={`min-h-[28px] w-[60px] whitespace-pre-line text-center text-[10px] font-semibold leading-[14px] sm:w-[68px] sm:text-[11px] sm:leading-[15px] ${activeOverlays.includes(layer.id as OverlayType) ? "text-emerald-700" : "text-gray-500"}`}
                   >
                     {layer.label}
                   </span>

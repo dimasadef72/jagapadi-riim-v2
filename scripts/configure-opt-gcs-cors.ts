@@ -15,6 +15,7 @@ await storage.bucket(GCS_BUCKET).setCorsConfiguration([
     origin: [
       "http://localhost:3000",
       "http://127.0.0.1:3000",
+      "https://jagapadi-riim.vercel.app",
       "https://storage.googleapis.com",
     ],
     method: ["GET", "HEAD", "OPTIONS"],
