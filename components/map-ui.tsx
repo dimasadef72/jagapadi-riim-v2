@@ -105,17 +105,6 @@ function MapResizer() {
   return null;
 }
 
-function MapMovingClass() {
-  const map = useMapEvents({
-    movestart: () => map.getContainer().classList.add("is-moving"),
-    zoomstart: () => map.getContainer().classList.add("is-moving"),
-    moveend: () => map.getContainer().classList.remove("is-moving"),
-    zoomend: () => map.getContainer().classList.remove("is-moving"),
-  });
-
-  return null;
-}
-
 function SelectedFeatureMarker({
   feature,
   onClose,
@@ -5316,7 +5305,6 @@ export default function MapUI({
         className="h-full w-full pb-[72dvh] sm:pb-0"
       >
         <MapResizer />
-        <MapMovingClass />
         {focusedFeature && (
           <SelectedFeatureMarker
             feature={focusedFeature}

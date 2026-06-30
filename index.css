@@ -181,10 +181,6 @@ a {
   animation-delay: 0.9s;
 }
 
-.leaflet-container.is-moving .hama-marker-ripple {
-  animation-play-state: paused;
-}
-
 @keyframes hama-marker-ripple {
   0% {
     opacity: 0.24;
