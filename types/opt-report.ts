@@ -7,7 +7,22 @@ export type OptYearMetadata = {
   publicUrl: string;
   fileSizeBytes: number;
   sourceFile?: string;
+  schemaVersion?: number;
   updatedAt: string;
+};
+
+export type OptActiveItem = {
+  nama: string;
+  luas: number;
+};
+
+export type OptWeather = {
+  temp: number;
+  humidity: number;
+  precip: number;
+  windspeed: number;
+  vpd: number;
+  lwd: number;
 };
 
 export type OptReportRow = {
@@ -15,7 +30,7 @@ export type OptReportRow = {
   sourceRowNumber: number;
   tahun: number;
   bulan: number;
-  periode: number;
+  periode: string;
   mt: string;
   kabupaten: string;
   kecamatan: string;
@@ -49,4 +64,13 @@ export type OptReportRow = {
   lksp: number;
   lksj: number;
   waspada: number;
+  tingkatKeparahan: string;
+  aktifOpt: OptActiveItem[];
+  cuaca: OptWeather;
+  temp: number;
+  humidity: number;
+  precip: number;
+  windspeed: number;
+  vpd: number;
+  lwd: number;
 };

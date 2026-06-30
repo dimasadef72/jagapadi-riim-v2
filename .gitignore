@@ -18,6 +18,7 @@
 
 # local source data
 /datasebaranhama/
+/docs/json/
 
 # next.js
 /.next/

@@ -137,3 +137,61 @@ a {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+.leaflet-marker-icon.hama-marker-icon {
+  border: 0;
+  background: transparent;
+}
+
+.hama-marker-wrap {
+  position: relative;
+  display: flex;
+  width: 104px;
+  height: 104px;
+  align-items: center;
+  justify-content: center;
+}
+
+.hama-marker-core {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  color: var(--hama-marker-color);
+  background: #ffffff;
+  border: 2px solid #ffffff;
+  border-radius: 11px;
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.28);
+}
+
+.hama-marker-ripple {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  background: var(--hama-marker-color);
+  opacity: 0.24;
+  animation: hama-marker-ripple 1.8s ease-out infinite;
+}
+
+.hama-marker-ripple-delay {
+  animation-delay: 0.9s;
+}
+
+.leaflet-container.is-moving .hama-marker-ripple {
+  animation-play-state: paused;
+}
+
+@keyframes hama-marker-ripple {
+  0% {
+    opacity: 0.24;
+    transform: scale(0.7);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.7);
+  }
+}

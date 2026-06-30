@@ -45,13 +45,9 @@ import {
   Beaker,
   Bug,
   ThermometerSun,
-  Droplets,
-  Wind,
-  FlaskConical,
   Activity,
   MapPinned,
   ScanSearch,
-  Info,
 } from "lucide-react";
 
 import FilterSelect from "./filter-select";
@@ -91,113 +87,6 @@ import {
 } from "@/services/lahan-service";
 import type { OptReportRow, OptYearMetadata } from "@/types/opt-report";
 
-// ... existing code down to MapClickHandler ...
-
-const HAMA_FIELD_HELP: Partial<Record<keyof OptReportRow | string, string>> = {
-  area: "Lokasi area pengamatan OPT berdasarkan desa dan kecamatan.",
-  waktu: "Bulan, tahun, dan periode laporan pengamatan OPT.",
-  tahun: "Tahun laporan pengamatan OPT.",
-  komoditas: "Komoditas dan musim tanam pada laporan pengamatan.",
-  opt: "Organisme Pengganggu Tumbuhan yang diamati.",
-  lt: "Luas Tanam (ha).",
-  ssr: "Serangan Sangat Ringan (ha).",
-  sss: "Serangan Ringan (ha).",
-  ssb: "Serangan Sedang (ha).",
-  ssp: "Serangan Berat (ha).",
-  ssj: "Serangan Puso/Sangat Berat (ha).",
-  terkendali: "Luas serangan yang berhasil dikendalikan (ha).",
-  panen: "Luas panen terdampak (ha).",
-  intensitas: "Persentase intensitas serangan.",
-  ltsr: "Luas Tambah Serangan Ringan (ha).",
-  ltss: "Luas Tambah Serangan Sedang (ha).",
-  ltsb: "Luas Tambah Serangan Berat (ha).",
-  ltsp: "Luas Tambah Serangan Puso (ha).",
-  ltsj: "Luas Tambah Serangan Jumlah (ha).",
-  kimia: "Luas pengendalian dengan pestisida kimia (ha).",
-  hayati: "Luas pengendalian menggunakan agen hayati (ha).",
-  eradikasi: "Luas pengendalian dengan eradikasi/pemusnahan (ha).",
-  cl: "Cultural Control / pengendalian kultur teknis (ha).",
-  jumlahPengendali: "Total luas pengendalian seluruh metode (ha).",
-  lksr: "Luas Keadaan Serangan Ringan (ha).",
-  lkss: "Luas Keadaan Serangan Sedang (ha).",
-  lksb: "Luas Keadaan Serangan Berat (ha).",
-  lksp: "Luas Keadaan Serangan Puso (ha).",
-  lksj: "Luas Keadaan Serangan Jumlah (ha).",
-  waspada: "Luas area waspada/potensi serangan (ha).",
-};
-
-type HamaHelpContent =
-  | string
-  | {
-      summary: string;
-      items: { label: string; description: string }[];
-    };
-
-function HamaInfoLabel({
-  label,
-  helpKey,
-  helpText,
-}: {
-  label: string;
-  helpKey?: keyof OptReportRow | string;
-  helpText?: HamaHelpContent;
-}) {
-  const help = helpText ?? (helpKey ? HAMA_FIELD_HELP[helpKey] : undefined);
-  const ariaHelp =
-    typeof help === "string"
-      ? help
-      : help
-        ? `${help.summary} ${help.items.map((item) => `${item.label}: ${item.description}`).join(". ")}`
-        : undefined;
-
-  if (!help) {
-    return <>{label}</>;
-  }
-
-  return (
-    <span className="group/tooltip relative inline-flex items-center gap-1">
-      <span>{label}</span>
-      <span
-        tabIndex={0}
-        aria-label={`Keterangan ${label}: ${ariaHelp}`}
-        className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-slate-400 outline-none transition hover:bg-white hover:text-rose-700 focus:bg-white focus:text-rose-700"
-      >
-        <Info className="h-3 w-3" />
-      </span>
-      <span className="pointer-events-none absolute left-0 top-[calc(100%+10px)] z-[1700] hidden w-[min(19rem,calc(100vw-3rem))] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[12px] font-semibold leading-relaxed normal-case tracking-normal text-slate-700 shadow-[0_18px_45px_rgba(15,23,42,0.16)] group-hover/tooltip:block group-focus-within/tooltip:block">
-        <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-rose-700">
-          {label}
-        </span>
-        {typeof help === "string" ? (
-          help
-        ) : (
-          <>
-            <span className="block text-[12px] font-semibold leading-relaxed text-slate-700">
-              {help.summary}
-            </span>
-            <span className="mt-2 block space-y-1">
-              {help.items.map((item) => (
-                <span key={item.label} className="flex gap-2">
-                  <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-rose-500" />
-                  <span>
-                    <span className="font-black text-slate-900">
-                      {item.label}
-                    </span>
-                    <span className="text-slate-600">
-                      {" "}
-                      = {item.description}
-                    </span>
-                  </span>
-                </span>
-              ))}
-            </span>
-          </>
-        )}
-      </span>
-    </span>
-  );
-}
-
 function MapResizer() {
   const map = useMap();
 
@@ -212,6 +101,17 @@ function MapResizer() {
 
     return () => resizeObserver.disconnect();
   }, [map]);
+
+  return null;
+}
+
+function MapMovingClass() {
+  const map = useMapEvents({
+    movestart: () => map.getContainer().classList.add("is-moving"),
+    zoomstart: () => map.getContainer().classList.add("is-moving"),
+    moveend: () => map.getContainer().classList.remove("is-moving"),
+    zoomend: () => map.getContainer().classList.remove("is-moving"),
+  });
 
   return null;
 }
@@ -247,10 +147,8 @@ function SelectedFeatureMarker({
   const [showInspectionSensor7In1Stats, setShowInspectionSensor7In1Stats] =
     useState(true);
   const [showHamaAttackStats, setShowHamaAttackStats] = useState(true);
-  const [showHamaAddedAttackStats, setShowHamaAddedAttackStats] =
-    useState(false);
   const [showHamaControlStats, setShowHamaControlStats] = useState(false);
-  const [showHamaConditionStats, setShowHamaConditionStats] = useState(true);
+  const [showHamaWeatherStats, setShowHamaWeatherStats] = useState(false);
   const [sensorHistoryIndex, setSensorHistoryIndex] = useState(0);
   const [sensor7In1HistoryIndex, setSensor7In1HistoryIndex] = useState(0);
   const map = useMap();
@@ -298,9 +196,8 @@ function SelectedFeatureMarker({
     setShowInspectionSensorStats(true);
     setShowInspectionSensor7In1Stats(true);
     setShowHamaAttackStats(true);
-    setShowHamaAddedAttackStats(false);
     setShowHamaControlStats(false);
-    setShowHamaConditionStats(false);
+    setShowHamaWeatherStats(false);
   }, [feature.data?.recordedAt, feature.id, feature.mode]);
 
   useEffect(() => {
@@ -1464,114 +1361,21 @@ function SelectedFeatureMarker({
 
           {feature.mode === "fase2-hama" && (
             <div className="mb-2 mt-1">
-              <div className="mb-3 flex items-center justify-between gap-3 pr-10">
-                <div className="flex items-center gap-2 text-rose-700 font-bold uppercase tracking-widest text-[10px]">
-                  <div className="bg-rose-100/80 p-1.5 rounded-md shadow-sm">
-                    <Bug className="w-3.5 h-3.5 text-rose-700" />
-                  </div>
-                  Fase 2: Hama
-                </div>
-                <span className="flex h-7 shrink-0 items-center rounded-lg bg-rose-800 px-2.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
-                  {feature.data.area?.split(",")[0] || feature.id}
-                </span>
-              </div>
-
-              {feature.data.imageUrl && (
-                <div className="mb-2 overflow-hidden rounded-xl border border-rose-100 bg-slate-100 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.16)]">
-                  <div className="relative aspect-[16/9]">
-                    <img
-                      src={feature.data.imageUrl}
-                      alt={`Gambar penyakit ${feature.data.jenis || feature.id}`}
-                      className="absolute inset-0 h-full w-full object-cover"
-                    />
-                    <div className="absolute left-3 top-3 rounded-lg border border-white/50 bg-white/90 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-rose-700 shadow-sm backdrop-blur">
-                      {feature.data.jenis || "Deteksi Hama"}
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {(() => {
                 const hamaRaw = feature.data.raw as
                   | Partial<OptReportRow>
                   | undefined;
-                const cardStyle = "border-rose-100 bg-rose-50/25";
-                const statusStyle = "text-slate-900";
-                const chipStyle =
-                  "bg-white text-rose-700 border-rose-200 shadow-[0_8px_18px_-14px_rgba(225,29,72,0.9)]";
-                const dotStyle = "bg-rose-500";
+                const severity =
+                  hamaRaw?.tingkatKeparahan || feature.data.status || "-";
+                const severityTone = getHamaSeverityTone(severity);
                 const waktu = [
                   hamaRaw?.bulan ? getOptMonthLabel(hamaRaw.bulan) : "",
                   hamaRaw?.tahun ?? feature.data.recordedAt,
-                  hamaRaw?.periode ? `Periode ${hamaRaw.periode}` : "",
+                  hamaRaw?.periode,
                 ]
                   .filter(Boolean)
                   .join(" · ");
-                const komoditas = [
-                  hamaRaw?.komoditas,
-                  hamaRaw?.mt ? `MT ${hamaRaw.mt}` : "",
-                ]
-                  .filter(Boolean)
-                  .join(" · ");
-
-                return (
-                  <div
-                    className={`relative mb-2 overflow-hidden rounded-xl border px-3 py-3 shadow-[0_10px_28px_-22px_rgba(225,29,72,0.55)] ${cardStyle}`}
-                  >
-                    <div className="mb-3 flex items-end justify-between gap-4">
-                      <div className="text-left">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          LKSJ
-                        </p>
-                        <div
-                          className={`mt-0.5 text-[25px] font-black leading-none tracking-tighter ${statusStyle}`}
-                        >
-                          {feature.data.lksj || feature.data.status || "-"}
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end text-right">
-                        <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          OPT Terdeteksi
-                        </p>
-                        <div
-                          className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wide ${chipStyle}`}
-                        >
-                          <span
-                            className={`h-1.5 w-1.5 rounded-full ${dotStyle}`}
-                          />
-                          {feature.data.jenis || "-"}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-y-1 rounded-lg border border-rose-100/70 bg-white/80 px-3 py-1.5">
-                      {[
-                        { label: "Area", value: feature.data.area },
-                        { label: "Waktu", value: waktu },
-                        { label: "Tahun", value: feature.data.recordedAt },
-                        { label: "Komoditas", value: komoditas },
-                      ].map((item) => (
-                        <div
-                          key={item.label}
-                          className="flex items-baseline justify-between gap-3 border-b border-slate-200/70 pb-0.5 last:border-b-0"
-                        >
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            {item.label}
-                          </span>
-                          <span className="max-w-[190px] text-right text-[12px] font-black text-slate-800">
-                            {item.value || "-"}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {(() => {
-                const hamaRaw = feature.data.raw as
-                  | Partial<OptReportRow>
-                  | undefined;
+                const activeOpt = hamaRaw?.aktifOpt ?? [];
                 const value = (key: keyof OptReportRow, suffix = "ha") => {
                   const rawValue = hamaRaw?.[key];
 
@@ -1585,142 +1389,44 @@ function SelectedFeatureMarker({
                 };
                 const sections = [
                   {
-                    key: "serangan",
-                    title: "Serangan",
-                    help: {
-                      summary:
-                        "Menampilkan luas serangan OPT berdasarkan tingkat keparahan dan dampaknya.",
-                      items: [
-                        {
-                          label: "SSR",
-                          description: "Serangan Sangat Ringan (ha)",
-                        },
-                        { label: "SSS", description: "Serangan Ringan (ha)" },
-                        { label: "SSB", description: "Serangan Sedang (ha)" },
-                        { label: "SSP", description: "Serangan Berat (ha)" },
-                        {
-                          label: "SSJ",
-                          description: "Serangan Puso/Sangat Berat (ha)",
-                        },
-                        {
-                          label: "Terkendali",
-                          description:
-                            "luas serangan yang berhasil dikendalikan (ha)",
-                        },
-                        {
-                          label: "Panen",
-                          description: "luas panen terdampak (ha)",
-                        },
-                        {
-                          label: "Intensitas",
-                          description: "persentase intensitas serangan",
-                        },
-                      ],
-                    },
+                    key: "opt",
+                    title: "OPT Aktif",
                     tone: "text-rose-700",
                     icon: Bug,
+                    open: true,
+                    onToggle: () => undefined,
+                    empty: activeOpt.length === 0 ? "Tidak ada OPT aktif" : "",
+                    rows: activeOpt.map((item) => ({
+                      label: item.nama,
+                      value: `${formatOptMapNumber(item.luas)} ha`,
+                    })),
+                  },
+                  {
+                    key: "serangan",
+                    title: "Luas Serangan",
+                    tone: "text-rose-700",
+                    icon: Activity,
                     open: showHamaAttackStats,
                     onToggle: () =>
                       setShowHamaAttackStats((current) => !current),
                     rows: [
+                      { label: "LT", value: value("lt") },
                       { label: "SSR", helpKey: "ssr", value: value("ssr") },
                       { label: "SSS", helpKey: "sss", value: value("sss") },
                       { label: "SSB", helpKey: "ssb", value: value("ssb") },
                       { label: "SSP", helpKey: "ssp", value: value("ssp") },
                       { label: "SSJ", helpKey: "ssj", value: value("ssj") },
+                      { label: "LKSJ", helpKey: "lksj", value: value("lksj") },
                       {
                         label: "Terkendali",
                         helpKey: "terkendali",
                         value: value("terkendali"),
                       },
-                      {
-                        label: "Panen",
-                        helpKey: "panen",
-                        value: value("panen"),
-                      },
-                      {
-                        label: "Intensitas",
-                        helpKey: "intensitas",
-                        value: value("intensitas", "%"),
-                      },
-                    ],
-                  },
-                  {
-                    key: "luas-tambah",
-                    title: "Luas Tambah Serangan",
-                    help: {
-                      summary:
-                        "Menampilkan penambahan luas serangan baru pada periode laporan.",
-                      items: [
-                        {
-                          label: "LTSR",
-                          description: "Luas Tambah Serangan Ringan (ha)",
-                        },
-                        {
-                          label: "LTSS",
-                          description: "Luas Tambah Serangan Sedang (ha)",
-                        },
-                        {
-                          label: "LTSB",
-                          description: "Luas Tambah Serangan Berat (ha)",
-                        },
-                        {
-                          label: "LTSP",
-                          description: "Luas Tambah Serangan Puso (ha)",
-                        },
-                        {
-                          label: "LTSJ",
-                          description: "Luas Tambah Serangan Jumlah (ha)",
-                        },
-                      ],
-                    },
-                    tone: "text-amber-700",
-                    icon: Activity,
-                    open: showHamaAddedAttackStats,
-                    onToggle: () =>
-                      setShowHamaAddedAttackStats((current) => !current),
-                    rows: [
-                      { label: "LTSR", helpKey: "ltsr", value: value("ltsr") },
-                      { label: "LTSS", helpKey: "ltss", value: value("ltss") },
-                      { label: "LTSB", helpKey: "ltsb", value: value("ltsb") },
-                      { label: "LTSP", helpKey: "ltsp", value: value("ltsp") },
-                      { label: "LTSJ", helpKey: "ltsj", value: value("ltsj") },
                     ],
                   },
                   {
                     key: "pengendalian",
                     title: "Pengendalian",
-                    help: {
-                      summary:
-                        "Menampilkan luas area yang sudah mendapat tindakan pengendalian OPT.",
-                      items: [
-                        {
-                          label: "Kimia",
-                          description:
-                            "pengendalian dengan pestisida kimia (ha)",
-                        },
-                        {
-                          label: "Hayati",
-                          description:
-                            "pengendalian menggunakan agen hayati (ha)",
-                        },
-                        {
-                          label: "Eradikasi",
-                          description:
-                            "pengendalian dengan eradikasi/pemusnahan (ha)",
-                        },
-                        {
-                          label: "CL",
-                          description:
-                            "Cultural Control atau pengendalian secara kultur teknis (ha)",
-                        },
-                        {
-                          label: "Jumlah",
-                          description:
-                            "total luas pengendalian seluruh metode (ha)",
-                        },
-                      ],
-                    },
                     tone: "text-lime-700",
                     icon: Sprout,
                     open: showHamaControlStats,
@@ -1751,54 +1457,37 @@ function SelectedFeatureMarker({
                     ],
                   },
                   {
-                    key: "keadaan",
-                    title: "Keadaan Serangan",
-                    help: {
-                      summary:
-                        "Menampilkan kondisi luas serangan saat pengamatan dilakukan.",
-                      items: [
-                        {
-                          label: "LKSR",
-                          description: "Luas Keadaan Serangan Ringan (ha)",
-                        },
-                        {
-                          label: "LKSS",
-                          description: "Luas Keadaan Serangan Sedang (ha)",
-                        },
-                        {
-                          label: "LKSB",
-                          description: "Luas Keadaan Serangan Berat (ha)",
-                        },
-                        {
-                          label: "LKSP",
-                          description: "Luas Keadaan Serangan Puso (ha)",
-                        },
-                        {
-                          label: "LKSJ",
-                          description:
-                            "Luas Keadaan Serangan Jumlah atau total serangan saat pengamatan (ha)",
-                        },
-                        {
-                          label: "Waspada",
-                          description: "luas area waspada/potensi serangan (ha)",
-                        },
-                      ],
-                    },
-                    tone: "text-orange-700",
-                    icon: Beaker,
-                    open: showHamaConditionStats,
+                    key: "cuaca",
+                    title: "Cuaca",
+                    tone: "text-cyan-700",
+                    icon: ThermometerSun,
+                    open: showHamaWeatherStats,
                     onToggle: () =>
-                      setShowHamaConditionStats((current) => !current),
+                      setShowHamaWeatherStats((current) => !current),
                     rows: [
-                      { label: "LKSR", helpKey: "lksr", value: value("lksr") },
-                      { label: "LKSS", helpKey: "lkss", value: value("lkss") },
-                      { label: "LKSB", helpKey: "lksb", value: value("lksb") },
-                      { label: "LKSP", helpKey: "lksp", value: value("lksp") },
-                      { label: "LKSJ", helpKey: "lksj", value: value("lksj") },
                       {
-                        label: "Waspada",
-                        helpKey: "waspada",
-                        value: value("waspada"),
+                        label: "Suhu",
+                        value: value("temp", "°C"),
+                      },
+                      {
+                        label: "Kelembaban",
+                        value: value("humidity", "%"),
+                      },
+                      {
+                        label: "Hujan",
+                        value: value("precip", "mm"),
+                      },
+                      {
+                        label: "Angin",
+                        value: value("windspeed", "km/j"),
+                      },
+                      {
+                        label: "VPD",
+                        value: value("vpd", ""),
+                      },
+                      {
+                        label: "LWD",
+                        value: value("lwd", "jam"),
                       },
                     ],
                   },
@@ -1806,13 +1495,61 @@ function SelectedFeatureMarker({
 
                 return (
                   <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3 pr-10">
+                      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-rose-700">
+                        <div className="rounded-md bg-rose-100/80 p-1.5 shadow-sm">
+                          <Bug className="h-3.5 w-3.5 text-rose-700" />
+                        </div>
+                        Hama History
+                      </div>
+                      <span
+                        className="flex h-7 shrink-0 items-center rounded-lg border px-2.5 text-[10px] font-bold uppercase tracking-wider shadow-sm"
+                        style={{
+                          borderColor: severityTone.borderColor,
+                          backgroundColor: severityTone.backgroundColor,
+                          color: severityTone.color,
+                        }}
+                      >
+                        {severity}
+                      </span>
+                    </div>
+
+                    <div className="rounded-xl border border-rose-100 bg-rose-50/30 px-3 py-2 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.1)]">
+                      <div className="grid">
+                        {[
+                          {
+                            label: "Desa",
+                            value:
+                              hamaRaw?.desa ||
+                              feature.data.area?.split(",")[0] ||
+                              feature.id,
+                          },
+                          { label: "Kecamatan", value: hamaRaw?.kecamatan },
+                          { label: "Komoditas", value: hamaRaw?.komoditas },
+                          { label: "Periode", value: waktu },
+                        ].map((item) => (
+                          <div
+                            key={item.label}
+                            className="flex items-baseline justify-between gap-3 border-b border-rose-100/70 py-1 last:border-b-0"
+                          >
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                              {item.label}
+                            </span>
+                            <span className="max-w-[210px] text-right text-[12px] font-black tabular-nums text-slate-800">
+                              {item.value || "-"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
                     {sections.map((section) => {
                       const SectionIcon = section.icon;
 
                       return (
                         <div
                           key={section.key}
-                          className="relative rounded-xl border border-slate-100 bg-slate-50/70"
+                          className="relative rounded-lg border border-slate-100 bg-white"
                         >
                           <button
                             type="button"
@@ -1820,33 +1557,35 @@ function SelectedFeatureMarker({
                               event.stopPropagation();
                               section.onToggle();
                             }}
-                            className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+                            className="flex w-full items-center justify-between gap-3 px-2.5 py-2 text-left"
                             aria-expanded={section.open}
                           >
                             <span
-                              className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider ${section.tone}`}
+                              className={`flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider ${section.tone}`}
                             >
                               <SectionIcon className="h-3.5 w-3.5" />
-                              <HamaInfoLabel
-                                label={section.title}
-                                helpText={section.help}
-                              />
+                              {section.title}
                             </span>
                             <ChevronDown
                               className={`h-4 w-4 shrink-0 transition-transform ${section.open ? "rotate-180" : ""} ${section.tone}`}
                             />
                           </button>
                           {section.open && (
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-slate-100 px-3 pb-2 pt-1.5">
+                            <div className="grid grid-cols-2 gap-x-3 gap-y-1 border-t border-slate-100 px-2.5 pb-2 pt-1.5">
+                              {section.empty ? (
+                                <div className="col-span-2 rounded-md bg-slate-50 px-2.5 py-2 text-[12px] font-bold text-slate-500">
+                                  {section.empty}
+                                </div>
+                              ) : null}
                               {section.rows.map((row) => (
                                 <div
                                   key={row.label}
-                                  className="flex items-baseline justify-between gap-3 border-b border-slate-200/70 pb-1 last:border-b-0 [&:nth-last-child(2)]:border-b-0"
+                                  className="flex items-baseline justify-between gap-2 border-b border-slate-100 pb-0.5 last:border-b-0 [&:nth-last-child(2)]:border-b-0"
                                 >
-                                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
                                     {row.label}
                                   </span>
-                                  <span className="text-right text-[12px] font-black tabular-nums text-slate-800">
+                                  <span className="text-right text-[11px] font-black tabular-nums text-slate-800">
                                     {row.value}
                                   </span>
                                 </div>
@@ -1862,58 +1601,61 @@ function SelectedFeatureMarker({
             </div>
           )}
 
-          <div
-            className={`h-[1px] w-full bg-gray-200 ${feature.mode === "fase2-hama" ? "mb-2" : "mb-3"}`}
-          />
+          <>
+            <div
+              className={`h-[1px] w-full bg-gray-200 ${feature.mode === "fase2-hama" ? "mb-2 mt-2" : "mb-3"}`}
+            />
 
-          {/* Location Info */}
-          <div className={feature.mode === "fase2-hama" ? "mb-3" : "mb-4"}>
-            <div className="flex items-center gap-1 text-[#4B7C63] font-bold uppercase tracking-widest text-[9px]">
-              <MapPin className="w-3 h-3" /> Lokasi
-            </div>
-            <p
-              className="text-[12px] font-bold text-gray-900 leading-[1.4] m-0"
-              style={{ marginTop: "3px" }}
-            >
-              {address}
-            </p>
-          </div>
-
-          <div
-            className={`h-[1px] w-full bg-gray-200 ${feature.mode === "fase2-hama" ? "mb-2" : "mb-3"}`}
-          />
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col">
+            <div className={feature.mode === "fase2-hama" ? "mb-2" : "mb-4"}>
               <div className="flex items-center gap-1 text-[#4B7C63] font-bold uppercase tracking-widest text-[9px]">
-                <div className="w-3 h-3 rounded-full border-[1.5px] border-current flex items-center justify-center">
-                  <div className="w-2 h-[1.5px] bg-current" />
-                </div>
-                LAT
+                <MapPin className="w-3 h-3" /> Lokasi
               </div>
               <p
-                className="font-extrabold text-gray-900 text-[12px] leading-tight m-0"
-                style={{ marginTop: "1px" }}
+                className="text-[12px] font-bold text-gray-900 leading-[1.4] m-0"
+                style={{ marginTop: "3px" }}
               >
-                {feature.coordinates[0].toFixed(6)}
+                {address}
               </p>
             </div>
 
-            <div className="flex flex-col">
-              <div className="flex items-center gap-1 text-[#4B7C63] font-bold uppercase tracking-widest text-[9px]">
-                <div className="w-3 h-3 rounded-full border-[1.5px] border-current flex items-center justify-center">
-                  <div className="w-2 h-[1.5px] bg-current rotate-90" />
+            {feature.mode !== "fase2-hama" && (
+              <div className="mb-3 h-[1px] w-full bg-gray-200" />
+            )}
+          </>
+
+          {feature.mode !== "fase2-hama" && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1 text-[#4B7C63] font-bold uppercase tracking-widest text-[9px]">
+                  <div className="w-3 h-3 rounded-full border-[1.5px] border-current flex items-center justify-center">
+                    <div className="w-2 h-[1.5px] bg-current" />
+                  </div>
+                  LAT
                 </div>
-                LONG
+                <p
+                  className="font-extrabold text-gray-900 text-[12px] leading-tight m-0"
+                  style={{ marginTop: "1px" }}
+                >
+                  {feature.coordinates[0].toFixed(6)}
+                </p>
               </div>
-              <p
-                className="font-extrabold text-gray-900 text-[12px] leading-tight m-0"
-                style={{ marginTop: "1px" }}
-              >
-                {feature.coordinates[1].toFixed(6)}
-              </p>
+
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1 text-[#4B7C63] font-bold uppercase tracking-widest text-[9px]">
+                  <div className="w-3 h-3 rounded-full border-[1.5px] border-current flex items-center justify-center">
+                    <div className="w-2 h-[1.5px] bg-current rotate-90" />
+                  </div>
+                  LONG
+                </div>
+                <p
+                  className="font-extrabold text-gray-900 text-[12px] leading-tight m-0"
+                  style={{ marginTop: "1px" }}
+                >
+                  {feature.coordinates[1].toFixed(6)}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </Popup>
     </Marker>
@@ -2552,9 +2294,66 @@ const OPT_MONTH_LABELS = [
   "Des",
 ];
 const EMPTY_OPT_ROWS: OptReportRow[] = [];
-const HAMA_MARKER_ICON = new L.DivIcon({
-  html: `<div style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;background:#fff1f2;border:2px solid #ffffff;box-shadow:0 8px 16px rgba(15,23,42,.28);">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+const HAMA_SEVERITY_LABELS = [
+  "Stabil",
+  "Agak Stabil",
+  "Sedang",
+  "Parah",
+  "Sangat Parah",
+];
+
+function getHamaSeverityTone(severity?: string) {
+  const normalized = (severity || "").toLowerCase();
+
+  if (normalized.includes("sangat parah")) {
+    return {
+      color: "#7f1d1d",
+      backgroundColor: "#fef2f2",
+      borderColor: "#fecaca",
+    };
+  }
+
+  if (normalized.includes("parah")) {
+    return {
+      color: "#ef4444",
+      backgroundColor: "#fff1f2",
+      borderColor: "#fecdd3",
+    };
+  }
+
+  if (normalized.includes("sedang")) {
+    return {
+      color: "#f59e0b",
+      backgroundColor: "#fffbeb",
+      borderColor: "#fde68a",
+    };
+  }
+
+  if (normalized.includes("agak stabil")) {
+    return {
+      color: "#84cc16",
+      backgroundColor: "#f7fee7",
+      borderColor: "#d9f99d",
+    };
+  }
+
+  return {
+    color: "#16a34a",
+    backgroundColor: "#f0fdf4",
+    borderColor: "#bbf7d0",
+  };
+}
+
+function getHamaMarkerIcon(row: PhaseTableRow) {
+  const raw = row.raw as Partial<OptReportRow> | undefined;
+  const tone = getHamaSeverityTone(raw?.tingkatKeparahan ?? row.status);
+
+  return new L.DivIcon({
+    html: `<div class="hama-marker-wrap" style="--hama-marker-color:${tone.color};">
+      <span class="hama-marker-ripple"></span>
+      <span class="hama-marker-ripple hama-marker-ripple-delay"></span>
+      <div class="hama-marker-core">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <path d="m8 2 1.88 1.88"/>
       <path d="M14.12 3.88 16 2"/>
       <path d="M9 7.13v-1a3 3 0 0 1 6 0v1"/>
@@ -2567,11 +2366,13 @@ const HAMA_MARKER_ICON = new L.DivIcon({
       <path d="M18 13h4"/>
       <path d="M21 21c0-2.1-1.7-3.9-3.8-4"/>
     </svg>
-  </div>`,
-  className: "",
-  iconSize: [30, 30],
-  iconAnchor: [15, 15],
-});
+      </div>
+    </div>`,
+    className: "hama-marker-icon",
+    iconSize: [104, 104],
+    iconAnchor: [52, 52],
+  });
+}
 
 function panelNumericValue(value: string | undefined) {
   return Number(String(value ?? "").replace("%", "")) || 0;
@@ -2701,7 +2502,6 @@ function formatOptMapNumber(value: number | null | undefined, digits = 2) {
 function toOptPhaseRow(row: OptReportRow): PhaseTableRow {
   const lksj = formatOptMapNumber(row.lksj);
   const terkendali = formatOptMapNumber(row.terkendali);
-  const waspada = formatOptMapNumber(row.waspada);
   const lokasi = [row.desa, row.kecamatan].filter(Boolean).join(", ");
 
   return {
@@ -2709,10 +2509,10 @@ function toOptPhaseRow(row: OptReportRow): PhaseTableRow {
     coordinates: [row.latitude, row.longitude],
     raw: row,
     area: lokasi,
-    status: row.lksj > 0 ? `LKSJ ${lksj} ha` : `Waspada ${waspada} ha`,
+    status: row.tingkatKeparahan || (row.lksj > 0 ? `LKSJ ${lksj} ha` : "Stabil"),
     jenis: row.opt || "-",
     lksj: `${lksj} ha`,
-    rekomendasi: `Komoditas ${row.komoditas || "-"} - MT ${row.mt || "-"} - terkendali ${terkendali} ha, waspada ${waspada} ha.`,
+    rekomendasi: `LKSJ ${lksj} ha - terkendali ${terkendali} ha.`,
     recordedAt: `${row.tahun}`,
   };
 }
@@ -2727,7 +2527,7 @@ function HamaMapMarker({
   return (
     <Marker
       position={row.coordinates}
-      icon={HAMA_MARKER_ICON}
+      icon={getHamaMarkerIcon(row)}
       eventHandlers={{
         click: (event) => {
           event.originalEvent?.stopPropagation();
@@ -2874,6 +2674,29 @@ function HamaMonthStepper({
         >
           <ChevronRight className="h-4 w-4" />
         </button>
+      </div>
+      <div className="mt-2 border-t border-slate-100 pt-2">
+        <p className="mb-1.5 text-[9px] font-black uppercase tracking-widest text-slate-500">
+          Keparahan
+        </p>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+          {HAMA_SEVERITY_LABELS.map((label) => {
+            const tone = getHamaSeverityTone(label);
+
+            return (
+              <div
+                key={label}
+                className="flex min-w-0 items-center gap-1.5 text-[10px] font-bold text-slate-700"
+              >
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white"
+                  style={{ backgroundColor: tone.color }}
+                />
+                <span className="truncate">{label}</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -5493,6 +5316,7 @@ export default function MapUI({
         className="h-full w-full pb-[72dvh] sm:pb-0"
       >
         <MapResizer />
+        <MapMovingClass />
         {focusedFeature && (
           <SelectedFeatureMarker
             feature={focusedFeature}

@@ -85,7 +85,7 @@ function readWorkbookRows() {
       sourceRowNumber,
       tahun,
       bulan: toNumber(values.Bulan),
-      periode: toNumber(values.periode),
+      periode: toText(values.periode),
       mt: toText(values.MT),
       kabupaten: toText(values.Kabupaten),
       kecamatan: toText(values.Kecamatan),
@@ -119,6 +119,24 @@ function readWorkbookRows() {
       waspada: toNumber(values.Waspada),
       latitude: toNumber(values.Latitude),
       longitude: toNumber(values.Longitude),
+      tingkatKeparahan: "",
+      aktifOpt: toText(values.OPT)
+        ? [{ nama: toText(values.OPT), luas: toNumber(values.LKSJ) }]
+        : [],
+      cuaca: {
+        temp: 0,
+        humidity: 0,
+        precip: 0,
+        windspeed: 0,
+        vpd: 0,
+        lwd: 0,
+      },
+      temp: 0,
+      humidity: 0,
+      precip: 0,
+      windspeed: 0,
+      vpd: 0,
+      lwd: 0,
     } satisfies OptReportRow;
   });
 }

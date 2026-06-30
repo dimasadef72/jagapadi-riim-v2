@@ -12,7 +12,7 @@ import {
   Search,
 } from "lucide-react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import FilterSelect from "./filter-select";
 import MultiYearSelect from "./multi-year-select";
@@ -31,34 +31,29 @@ interface Fase2HamaScreenProps {
 type ColumnKey = keyof OptReportRow;
 
 const columnHelp: Partial<Record<ColumnKey, string>> = {
+  bulan: "Bulan laporan pengamatan OPT",
+  periode: "Periode laporan dalam format tahun-bulan",
+  tingkatKeparahan: "Kategori kondisi serangan pada desa dan bulan tersebut",
+  aktifOpt: "Daftar OPT aktif beserta luas serangannya",
   lt: "Luas Tanam (ha)",
-  opt: "Organisme Pengganggu Tumbuhan yang diamati",
   ssr: "Serangan Sangat Ringan (ha)",
   sss: "Serangan Ringan (ha)",
   ssb: "Serangan Sedang (ha)",
   ssp: "Serangan Berat (ha)",
   ssj: "Serangan Puso/Sangat Berat (ha)",
+  lksj: "Luas Keadaan Serangan Jumlah (ha)",
   terkendali: "Luas serangan yang berhasil dikendalikan (ha)",
-  panen: "Luas panen terdampak (ha)",
-  intensitas: "Persentase intensitas serangan",
-  ltsr: "Luas Tambah Serangan Ringan (ha)",
-  ltss: "Luas Tambah Serangan Sedang (ha)",
-  ltsb: "Luas Tambah Serangan Berat (ha)",
-  ltsp: "Luas Tambah Serangan Puso (ha)",
-  ltsj: "Luas Tambah Serangan Jumlah (ha)",
   kimia: "Luas pengendalian dengan pestisida kimia (ha)",
   hayati: "Luas pengendalian menggunakan agen hayati (ha)",
   eradikasi: "Luas pengendalian dengan eradikasi/pemusnahan (ha)",
   cl: "Cultural Control / pengendalian kultur teknis (ha)",
   jumlahPengendali: "Total luas pengendalian seluruh metode (ha)",
-  lksr: "Luas Keadaan Serangan Ringan (ha)",
-  lkss: "Luas Keadaan Serangan Sedang (ha)",
-  lksb: "Luas Keadaan Serangan Berat (ha)",
-  lksp: "Luas Keadaan Serangan Puso (ha)",
-  lksj: "Luas Keadaan Serangan Jumlah (ha)",
-  waspada: "Luas area waspada/potensi serangan (ha)",
-  latitude: "Koordinat lintang lokasi pengamatan",
-  longitude: "Koordinat bujur lokasi pengamatan",
+  temp: "Rata-rata suhu udara",
+  humidity: "Rata-rata kelembaban udara",
+  precip: "Curah hujan",
+  windspeed: "Kecepatan angin",
+  vpd: "Vapor Pressure Deficit",
+  lwd: "Leaf Wetness Duration",
 };
 
 const columnGroups: {
@@ -70,55 +65,38 @@ const columnGroups: {
     label: "Waktu",
     tone: "bg-slate-100 text-slate-700",
     columns: [
-      { key: "tahun", label: "Tahun", width: "min-w-[80px]" },
       { key: "bulan", label: "Bulan", width: "min-w-[80px]" },
-      { key: "periode", label: "Periode", width: "min-w-[90px]" },
-      { key: "mt", label: "MT", width: "min-w-[140px]" },
+      { key: "periode", label: "Periode", width: "min-w-[100px]" },
     ],
   },
   {
     label: "Lokasi",
     tone: "bg-sky-50 text-sky-800",
     columns: [
-      { key: "kabupaten", label: "Kabupaten", width: "min-w-[120px]" },
       { key: "kecamatan", label: "Kecamatan", width: "min-w-[130px]" },
       { key: "desa", label: "Desa", width: "min-w-[140px]" },
-      { key: "latitude", label: "Latitude", width: "min-w-[110px]" },
-      { key: "longitude", label: "Longitude", width: "min-w-[120px]" },
     ],
   },
   {
-    label: "Objek Pengamatan",
-    tone: "bg-emerald-50 text-emerald-800",
-    columns: [
-      { key: "komoditas", label: "Komoditas", width: "min-w-[110px]" },
-      { key: "lt", label: "LT", width: "min-w-[80px]" },
-      { key: "opt", label: "OPT", width: "min-w-[100px]" },
-    ],
-  },
-  {
-    label: "Serangan",
+    label: "Status Serangan",
     tone: "bg-rose-50 text-rose-800",
     columns: [
+      { key: "tingkatKeparahan", label: "Keparahan", width: "min-w-[140px]" },
+      { key: "aktifOpt", label: "OPT Aktif", width: "min-w-[220px]" },
+    ],
+  },
+  {
+    label: "Luas",
+    tone: "bg-amber-50 text-amber-800",
+    columns: [
+      { key: "lt", label: "LT" },
       { key: "ssr", label: "SSR" },
       { key: "sss", label: "SSS" },
       { key: "ssb", label: "SSB" },
       { key: "ssp", label: "SSP" },
       { key: "ssj", label: "SSJ" },
+      { key: "lksj", label: "LKSJ" },
       { key: "terkendali", label: "Terkendali", width: "min-w-[120px]" },
-      { key: "panen", label: "PANEN", width: "min-w-[95px]" },
-      { key: "intensitas", label: "%", width: "min-w-[70px]" },
-    ],
-  },
-  {
-    label: "Luas Tambah Serangan",
-    tone: "bg-amber-50 text-amber-800",
-    columns: [
-      { key: "ltsr", label: "LTSR" },
-      { key: "ltss", label: "LTSS" },
-      { key: "ltsb", label: "LTSB" },
-      { key: "ltsp", label: "LTSP" },
-      { key: "ltsj", label: "LTSJ" },
     ],
   },
   {
@@ -137,15 +115,15 @@ const columnGroups: {
     ],
   },
   {
-    label: "Keadaan Serangan",
-    tone: "bg-orange-50 text-orange-800",
+    label: "Cuaca",
+    tone: "bg-cyan-50 text-cyan-800",
     columns: [
-      { key: "lksr", label: "LKSR" },
-      { key: "lkss", label: "LKSS" },
-      { key: "lksb", label: "LKSB" },
-      { key: "lksp", label: "LKSP" },
-      { key: "lksj", label: "LKSJ" },
-      { key: "waspada", label: "Waspada", width: "min-w-[105px]" },
+      { key: "temp", label: "Suhu" },
+      { key: "humidity", label: "Kelembaban", width: "min-w-[120px]" },
+      { key: "precip", label: "Hujan" },
+      { key: "windspeed", label: "Angin" },
+      { key: "vpd", label: "VPD" },
+      { key: "lwd", label: "LWD" },
     ],
   },
 ];
@@ -158,7 +136,19 @@ function formatNumber(value: string | number) {
 }
 
 function getCellValue(row: OptReportRow, key: ColumnKey) {
-  if (key === "tahun" || key === "bulan" || key === "periode") {
+  if (key === "aktifOpt") {
+    return row.aktifOpt.length
+      ? row.aktifOpt
+          .map((item) => `${item.nama} (${formatNumber(item.luas)} ha)`)
+          .join(", ")
+      : "-";
+  }
+
+  if (key === "bulan") {
+    return `Bulan ${row.bulan}`;
+  }
+
+  if (key === "periode" || key === "tingkatKeparahan") {
     return String(row[key]);
   }
 
@@ -212,7 +202,7 @@ export default function Fase2HamaScreen({
     queryFn: fetchOptYears,
     staleTime: 10 * 60 * 1000,
   });
-  const yearOptions = yearsQuery.data ?? [];
+  const yearOptions = useMemo(() => yearsQuery.data ?? [], [yearsQuery.data]);
   const yearOptionValues = useMemo(
     () => yearOptions.map((item) => String(item.tahun)),
     [yearOptions],
@@ -221,11 +211,6 @@ export default function Fase2HamaScreen({
   const selectedYearMetadata = yearOptions.filter((item) =>
     selectedYears.includes(String(item.tahun)),
   );
-
-  useEffect(() => {
-    if (yearFilter !== null || yearOptionValues.length === 0) return;
-    setYearFilter([yearOptionValues[0]]);
-  }, [yearFilter, yearOptionValues]);
 
   const rowsQuery = useQuery({
     queryKey: ["opt-rows", selectedYears],
@@ -242,7 +227,7 @@ export default function Fase2HamaScreen({
     staleTime: 10 * 60 * 1000,
   });
 
-  const rows = rowsQuery.data ?? [];
+  const rows = useMemo(() => rowsQuery.data ?? [], [rowsQuery.data]);
   const isYearFetching = rowsQuery.isFetching && !rowsQuery.isLoading;
   const monthOptions = useMemo(
     () => [...new Set(rows.map((row) => row.bulan))].sort((a, b) => a - b),
@@ -253,7 +238,10 @@ export default function Fase2HamaScreen({
     [rows],
   );
   const optOptions = useMemo(
-    () => [...new Set(rows.map((row) => row.opt))].sort(),
+    () =>
+      [...new Set(rows.flatMap((row) => row.aktifOpt.map((opt) => opt.nama)))]
+        .filter(Boolean)
+        .sort(),
     [rows],
   );
 
@@ -271,6 +259,8 @@ export default function Fase2HamaScreen({
         row.desa,
         row.komoditas,
         row.opt,
+        row.tingkatKeparahan,
+        row.aktifOpt.map((item) => item.nama).join(" "),
         row.latitude,
         row.longitude,
       ]
@@ -282,7 +272,8 @@ export default function Fase2HamaScreen({
         (monthFilter === "semua" || String(row.bulan) === monthFilter) &&
         (kecamatanFilter === "semua" ||
           row.kecamatan === kecamatanFilter) &&
-        (optFilter === "semua" || row.opt === optFilter)
+        (optFilter === "semua" ||
+          row.aktifOpt.some((item) => item.nama === optFilter))
       );
     });
   }, [kecamatanFilter, monthFilter, optFilter, query, rows]);
@@ -293,7 +284,10 @@ export default function Fase2HamaScreen({
       filteredRows: filteredRows.length,
       lksj: filteredRows.reduce((sum, row) => sum + row.lksj, 0),
       terkendali: filteredRows.reduce((sum, row) => sum + row.terkendali, 0),
-      waspada: filteredRows.reduce((sum, row) => sum + row.waspada, 0),
+      activeOpt: filteredRows.reduce(
+        (sum, row) => sum + row.aktifOpt.length,
+        0,
+      ),
     }),
     [filteredRows, rows.length],
   );
@@ -318,20 +312,9 @@ export default function Fase2HamaScreen({
         ...row,
         area: `${row.desa}, ${row.kecamatan}`,
         jenis: row.opt,
-        rekomendasi: `LKSJ ${formatNumber(row.lksj)} ha, terkendali ${formatNumber(row.terkendali)} ha, waspada ${formatNumber(row.waspada)} ha.`,
-        status: row.lksj > 0 ? "Historis OPT" : "Tidak ada serangan",
-        tingkat:
-          row.ssj > 0
-            ? "Puso/Sangat Berat"
-            : row.ssp > 0
-              ? "Berat"
-              : row.ssb > 0
-                ? "Sedang"
-                : row.sss > 0
-                  ? "Ringan"
-                  : row.ssr > 0
-                    ? "Sangat Ringan"
-                    : "-",
+        rekomendasi: `LKSJ ${formatNumber(row.lksj)} ha, terkendali ${formatNumber(row.terkendali)} ha.`,
+        status: row.tingkatKeparahan || "Tidak ada serangan",
+        tingkat: row.tingkatKeparahan || "-",
       },
     });
   };
@@ -366,8 +349,8 @@ export default function Fase2HamaScreen({
           { label: "Data Terfilter", value: `${totals.filteredRows} Baris` },
           { label: "Total LKSJ", value: `${formatNumber(totals.lksj)} ha` },
           {
-            label: "Total Terkendali",
-            value: `${formatNumber(totals.terkendali)} ha`,
+            label: "Total OPT Aktif",
+            value: `${formatNumber(totals.activeOpt)} Catatan`,
           },
         ].map((item) => (
           <section
@@ -494,12 +477,11 @@ export default function Fase2HamaScreen({
           </div>
         ) : rows.length === 0 ? (
           <div className="px-5 py-8 text-center text-[13px] font-semibold text-slate-500">
-            Data OPT belum tersedia. Jalankan seed untuk mengisi `opt_years`
-            dan file JSON Storage.
+            Data OPT belum tersedia di Firebase/GCS.
           </div>
         ) : (
           <div className="table-scrollbar overflow-x-auto">
-            <table className="min-w-[3420px] border-collapse text-center">
+            <table className="min-w-[2520px] border-collapse text-center">
               <thead>
                 <tr className="border-b border-slate-300">
                   {columnGroups.map((group) => (
@@ -512,10 +494,10 @@ export default function Fase2HamaScreen({
                     </th>
                   ))}
                   <th
-                    rowSpan={2}
+                    colSpan={1}
                     className="sticky right-0 z-20 border-l border-slate-300 bg-white px-5 py-3 text-center text-[12px] font-black uppercase tracking-wider text-slate-700 shadow-[-8px_0_18px_rgba(15,23,42,0.08)]"
                   >
-                    Marker
+                    Aksi
                   </th>
                 </tr>
                 <tr className="border-b border-slate-300 bg-slate-100">
@@ -533,6 +515,9 @@ export default function Fase2HamaScreen({
                       </th>
                     )),
                   )}
+                  <th className="sticky right-0 z-20 border-l border-slate-300 bg-white px-5 py-3 text-center text-[11px] font-black uppercase tracking-wider text-slate-600 shadow-[-8px_0_18px_rgba(15,23,42,0.08)]">
+                    Marker
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
